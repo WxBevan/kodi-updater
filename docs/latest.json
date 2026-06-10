@@ -1,18 +1,16 @@
 {
-  "build_version": "1.0.6",
+  "build_version": "1.0.7",
   "message": "A new update is available.",
   "addons": [
-    "repository.cocoscrapers",
     "script.module.cocoscrapers",
     "script.module.jurialmunkey",
 
+    "pvr.iptvsimple",
 
     "plugin.program.autocompletion",
     "plugin.program.autowidget",
     "plugin.video.fenlight",
     "plugin.video.themoviedb.helper",
-
-    "pvr.iptvsimple",
 
     "script.bingie.helper",
     "script.bingie.toolbox",

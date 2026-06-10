@@ -1,22 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.updater"
        name="Updater"
-       version="1.0.5"
+       version="1.0.6"
        provider-name="updater">
 
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
 
-        <import addon="repository.cocoscrapers" version="0.0.0"/>
         <import addon="script.module.cocoscrapers" version="0.0.0"/>
+        <import addon="script.module.jurialmunkey" version="0.0.0"/>
+        <import addon="pvr.iptvsimple" version="0.0.0"/>
 
         <import addon="plugin.program.autocompletion" version="0.0.0"/>
         <import addon="plugin.program.autowidget" version="0.0.0"/>
         <import addon="plugin.video.fenlight" version="0.0.0"/>
         <import addon="plugin.video.themoviedb.helper" version="0.0.0"/>
-        <import addon="script.module.jurialmunkey" version="0.0.0"/>
-
-        <import addon="pvr.iptvsimple" version="0.0.0"/>
 
         <import addon="script.bingie.helper" version="0.0.0"/>
         <import addon="script.bingie.toolbox" version="0.0.0"/>
@@ -30,7 +28,6 @@
     </requires>
 
     <extension point="xbmc.python.script" library="default.py" />
-
     <extension point="xbmc.service" library="service.py" />
 
     <extension point="xbmc.addon.metadata">
@@ -38,6 +35,6 @@
         <description lang="en_GB">Installs and updates the Kodi setup.</description>
         <platform>all</platform>
         <license>GPL-2.0-or-later</license>
-        <news>Improved setup dependency installation.</news>
+        <news>Removed repository dependencies and cleaned setup requirements.</news>
     </extension>
 </addon>

@@ -5,6 +5,8 @@ import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+import stat
+import time
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -28,18 +30,43 @@ EXCLUDE_EXTS = {
 }
 
 
+def remove_readonly(func, path, exc_info):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        raise
+
+
+def safe_rmtree(path):
+    last_error = None
+
+    for attempt in range(8):
+        try:
+            shutil.rmtree(path, onerror=remove_readonly)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(0.75)
+
+    raise last_error
+
+
 def clean_public_dir():
     PUBLIC_DIR.mkdir(exist_ok=True)
 
     for item in PUBLIC_DIR.iterdir():
-        if item.name == "latest.json":
-            # Keep latest.json so you can edit build_version/message manually.
+        if item.name in {"latest.json", ".nojekyll"}:
             continue
 
         if item.is_dir():
-            shutil.rmtree(item)
+            safe_rmtree(item)
         else:
-            item.unlink()
+            try:
+                item.unlink()
+            except PermissionError:
+                os.chmod(item, stat.S_IWRITE)
+                item.unlink()
 
 
 def get_addon_info(addon_dir):
@@ -104,6 +131,37 @@ def zip_addon(addon_dir, addon_id, version):
             zf.write(file_path, archive_name.as_posix())
 
     return zip_path
+
+def copy_asset_files(addon_dir, addon_id):
+    out_dir = PUBLIC_DIR / addon_id
+
+    asset_names = {
+        "icon.png",
+        "icon.jpg",
+        "fanart.jpg",
+        "fanart.png",
+    }
+
+    for asset_name in asset_names:
+        source = addon_dir / asset_name
+        if source.exists():
+            dest = out_dir / asset_name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, dest)
+
+    resources_dir = addon_dir / "resources"
+
+    if resources_dir.exists():
+        for file_path in resources_dir.rglob("*"):
+            if file_path.is_dir():
+                continue
+
+            if file_path.name.lower() in asset_names:
+                rel_path = file_path.relative_to(addon_dir)
+                dest = out_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(file_path, dest)
+
 
 
 def strip_xml_declaration(xml_text):
@@ -181,6 +239,8 @@ def main():
         print(f"Building {addon_id} {version}")
 
         zip_path = zip_addon(addon_dir, addon_id, version)
+        copy_asset_files(addon_dir, addon_id)
+        
         addon_xml_texts.append(addon_xml_text)
 
         # Put a copy of the repository zip at the web root so it is easy to install from Kodi.
