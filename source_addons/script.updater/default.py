@@ -53,17 +53,8 @@ def is_addon_installed(addon_id):
         return False
 
 
-def wait_until_installed(addon_id, timeout_seconds=45):
-    waited = 0
-
-    while waited < timeout_seconds:
-        if is_addon_installed(addon_id):
-            return True
-
-        xbmc.sleep(1000)
-        waited += 1
-
-    return is_addon_installed(addon_id)
+def get_missing_addons(addons):
+    return [addon_id for addon_id in addons if not is_addon_installed(addon_id)]
 
 
 def run_builtin(command, wait_ms=1000):
@@ -81,76 +72,34 @@ def install_or_update():
     )
 
     dialog = xbmcgui.DialogProgress()
-    dialog.create("Updater", "Preparing update...")
+    dialog.create("Updater", "Checking setup...")
 
     try:
         latest = get_latest_info()
         latest_version = latest.get("build_version", "0.0.0")
-        addons_to_install = get_required_addons(latest)
+        required_addons = get_required_addons(latest)
 
-        if not addons_to_install:
-            dialog.close()
-            xbmcgui.Dialog().ok(
-                "Updater",
-                "No add-ons were listed in latest.json."
-            )
-            return
-
-        dialog.update(5, "Refreshing repositories...")
+        dialog.update(15, "Refreshing repositories...")
         run_builtin("UpdateAddonRepos", 5000)
 
-        failed = []
-        total = len(addons_to_install)
+        dialog.update(35, "Refreshing installed add-ons...")
+        run_builtin("UpdateLocalAddons", 5000)
 
-        for index, addon_id in enumerate(addons_to_install, start=1):
-            if dialog.iscanceled():
-                dialog.close()
-                xbmcgui.Dialog().notification(
-                    "Updater",
-                    "Update cancelled",
-                    xbmcgui.NOTIFICATION_WARNING,
-                    4000
-                )
-                return
+        dialog.update(60, "Checking required add-ons...")
+        xbmc.sleep(1500)
 
-            percent = 10 + int((index / max(total, 1)) * 75)
+        missing = get_missing_addons(required_addons)
 
-            dialog.update(
-                percent,
-                f"Installing/updating {addon_id}..."
-            )
-
-            run_builtin(f"InstallAddon({addon_id})", 2500)
-
-            if not wait_until_installed(addon_id, 45):
-                failed.append(addon_id)
-                log(f"Failed to install {addon_id}", xbmc.LOGWARNING)
-                continue
-
-            run_builtin(f"EnableAddon({addon_id})", 500)
-
-        dialog.update(90, "Refreshing installed add-ons...")
-        run_builtin("UpdateLocalAddons", 4000)
-
-        missing_after_update = [
-            addon_id for addon_id in addons_to_install
-            if not is_addon_installed(addon_id)
-        ]
-
-        failed = sorted(set(failed + missing_after_update))
-
-        if failed:
+        if missing:
             dialog.close()
 
             xbmcgui.Dialog().ok(
                 "Updater",
-                "Update did not fully complete.\n\n"
-                "These add-ons are still missing:\n\n"
-                + "\n".join(failed[:20])
+                "Some required add-ons are still missing.\n\n"
+                "On a fresh install, install or update the Updater add-on from the repository again so Kodi can install its dependencies.\n\n"
+                "Missing:\n"
+                + "\n".join(missing[:20])
             )
-
-            # Do not save build_version if anything failed.
-            # This means the popup will come back next startup.
             return
 
         write_local_build_version(latest_version)

@@ -1,8 +1,7 @@
 {
-  "build_version": "1.0.4",
+  "build_version": "1.0.5",
   "message": "A new update is available.",
   "addons": [
-    "repository.updater",
     "repository.autowidget",
     "repository.bingie",
     "repository.cocoscrapers",
