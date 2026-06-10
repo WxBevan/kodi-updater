@@ -3,6 +3,7 @@ import os
 import urllib.request
 
 import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
@@ -48,8 +49,27 @@ def get_latest_info():
         return json.loads(response.read().decode("utf-8"))
 
 
+def get_required_addons(latest_info):
+    addons = latest_info.get("addons", [])
+    return [str(addon_id).strip() for addon_id in addons if str(addon_id).strip()]
+
+
+def is_addon_installed(addon_id):
+    try:
+        xbmcaddon.Addon(addon_id)
+        return True
+    except Exception:
+        return False
+
+
+def get_missing_addons(addons):
+    return [
+        addon_id for addon_id in addons
+        if not is_addon_installed(addon_id)
+    ]
+
+
 def stay_alive(monitor):
-    # Keep the service alive so Kodi does not keep restarting it every 15-20 seconds.
     while not monitor.abortRequested():
         if monitor.waitForAbort(60):
             break
@@ -58,14 +78,11 @@ def stay_alive(monitor):
 def main():
     monitor = xbmc.Monitor()
 
-    # Let Kodi finish loading the home screen.
     if monitor.waitForAbort(15):
         return
 
     window = xbmcgui.Window(10000)
 
-    # Prevent repeated popups in the same Kodi session.
-    # This resets naturally when Kodi restarts.
     if window.getProperty(SESSION_PROPERTY) == "true":
         stay_alive(monitor)
         return
@@ -79,12 +96,29 @@ def main():
         message = latest.get("message", "A new update is available.")
         local_version = read_local_build_version()
 
-        if version_tuple(latest_version) > version_tuple(local_version):
+        required_addons = get_required_addons(latest)
+        missing_addons = get_missing_addons(required_addons)
+
+        version_is_newer = version_tuple(latest_version) > version_tuple(local_version)
+        required_addons_missing = len(missing_addons) > 0
+
+        if version_is_newer or required_addons_missing:
+            extra = ""
+
+            if required_addons_missing:
+                extra = (
+                    "\n\nSome required add-ons are missing and need to be installed."
+                    f"\nMissing: {len(missing_addons)}"
+                )
+
             dialog = xbmcgui.Dialog()
 
             should_update = dialog.yesno(
                 "A new update is available",
-                f"{message}\n\nInstalled version: {local_version}\nAvailable version: {latest_version}",
+                f"{message}\n\n"
+                f"Installed version: {local_version}\n"
+                f"Available version: {latest_version}"
+                f"{extra}",
                 nolabel="Later",
                 yeslabel="Update"
             )

@@ -1783,7 +1783,7 @@ v0.5.9 (2022-03-22)
 	</extension>
 </addon>
 
-<addon id="script.updater" name="Updater" version="1.0.1" provider-name="WxBevan">
+<addon id="script.updater" name="Updater" version="1.0.3" provider-name="WxBevan">
 
     <requires>
         <import addon="xbmc.python" version="3.0.0" />

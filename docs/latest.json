@@ -1,5 +1,5 @@
 {
-  "build_version": "1.0.2",
+  "build_version": "1.0.4",
   "message": "A new update is available.",
   "addons": [
     "repository.updater",
@@ -52,7 +52,6 @@
     "script.bingie.toolbox",
     "script.bingie.widgets",
     "script.skinshortcuts",
-    "script.updater",
 
     "service.autoexec",
     "service.autostop",
