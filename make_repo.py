@@ -48,8 +48,9 @@ def get_addon_info(addon_dir):
     if not addon_xml.exists():
         raise FileNotFoundError(f"Missing addon.xml: {addon_dir}")
 
-    tree = ET.parse(addon_xml)
-    root = tree.getroot()
+    # utf-8-sig handles files that start with a hidden BOM character.
+    xml_text = addon_xml.read_text(encoding="utf-8-sig")
+    root = ET.fromstring(xml_text)
 
     addon_id = root.attrib.get("id", "").strip()
     version = root.attrib.get("version", "").strip()
@@ -65,7 +66,10 @@ def get_addon_info(addon_dir):
             f"Folder name must match addon id: folder={addon_dir.name}, addon id={addon_id}"
         )
 
-    return addon_id, version, addon_xml.read_text(encoding="utf-8")
+    # This serialises only the <addon> node, without any <?xml ... ?> declaration.
+    clean_addon_xml = ET.tostring(root, encoding="unicode")
+
+    return addon_id, version, clean_addon_xml
 
 
 def should_skip(path):
@@ -103,8 +107,8 @@ def zip_addon(addon_dir, addon_id, version):
 
 
 def strip_xml_declaration(xml_text):
+    xml_text = xml_text.lstrip("\ufeff").strip()
     return re.sub(r"^\s*<\?xml[^>]*\?>\s*", "", xml_text, count=1).strip()
-
 
 def build_addons_xml(addon_xml_texts):
     body = "\n\n".join(strip_xml_declaration(text) for text in addon_xml_texts)
