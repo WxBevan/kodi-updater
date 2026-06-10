@@ -1,0 +1,5 @@
+Generation failed.
+
+Missing login details: SERVER, USERNAME, PASSWORD. Fill these in at the top of the script and run it again.
+
+No new IPTV.m3u or IPTV-EPG.xml was written by this failed run.
