@@ -2,8 +2,6 @@
   "build_version": "1.0.5",
   "message": "A new update is available.",
   "addons": [
-    "repository.autowidget",
-    "repository.bingie",
     "repository.cocoscrapers",
 
     "script.module.addon.signals",
@@ -40,10 +38,8 @@
     "plugin.close.kodi",
     "plugin.program.autocompletion",
     "plugin.program.autowidget",
-    "plugin.program.openwizard",
     "plugin.video.fenlight",
     "plugin.video.themoviedb.helper",
-    "plugin.video.xstream-player",
 
     "pvr.iptvsimple",
 
