@@ -7,48 +7,13 @@
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
 
-        <import addon="repository.autowidget" version="0.0.0"/>
-        <import addon="repository.bingie" version="0.0.0"/>
         <import addon="repository.cocoscrapers" version="0.0.0"/>
-
-        <import addon="script.module.addon.signals" version="0.0.0"/>
-        <import addon="script.module.autocompletion" version="0.0.0"/>
-        <import addon="script.module.beautifulsoup4" version="0.0.0"/>
-        <import addon="script.module.certifi" version="0.0.0"/>
-        <import addon="script.module.chardet" version="0.0.0"/>
         <import addon="script.module.cocoscrapers" version="0.0.0"/>
-        <import addon="script.module.dateutil" version="0.0.0"/>
-        <import addon="script.module.dropbox" version="0.0.0"/>
-        <import addon="script.module.future" version="0.0.0"/>
-        <import addon="script.module.idna" version="0.0.0"/>
-        <import addon="script.module.infotagger" version="0.0.0"/>
-        <import addon="script.module.inputstreamhelper" version="0.0.0"/>
-        <import addon="script.module.jurialmunkey" version="0.0.0"/>
-        <import addon="script.module.pyqrcode" version="0.0.0"/>
-        <import addon="script.module.qrcode" version="0.0.0"/>
-        <import addon="script.module.requests" version="0.0.0"/>
-        <import addon="script.module.simplecache" version="0.0.0"/>
-        <import addon="script.module.simpleeval" version="0.0.0"/>
-        <import addon="script.module.simplejson" version="0.0.0"/>
-        <import addon="script.module.six" version="0.0.0"/>
-        <import addon="script.module.soupsieve" version="0.0.0"/>
-        <import addon="script.module.unidecode" version="0.0.0"/>
-        <import addon="script.module.urllib3" version="0.0.0"/>
 
-        <import addon="resource.images.aspectratio.color" version="0.0.0"/>
-        <import addon="resource.images.skinbackgrounds.titanium" version="0.0.0"/>
-        <import addon="resource.images.studios.coloured" version="0.0.0"/>
-
-        <import addon="metadata.themoviedb.org.python" version="0.0.0"/>
-        <import addon="metadata.tvshows.themoviedb.org.python" version="0.0.0"/>
-
-        <import addon="plugin.close.kodi" version="0.0.0"/>
         <import addon="plugin.program.autocompletion" version="0.0.0"/>
         <import addon="plugin.program.autowidget" version="0.0.0"/>
-        <import addon="plugin.program.openwizard" version="0.0.0"/>
         <import addon="plugin.video.fenlight" version="0.0.0"/>
         <import addon="plugin.video.themoviedb.helper" version="0.0.0"/>
-        <import addon="plugin.video.xstream-player" version="0.0.0"/>
 
         <import addon="pvr.iptvsimple" version="0.0.0"/>
 

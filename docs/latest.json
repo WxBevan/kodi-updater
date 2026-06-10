@@ -3,6 +3,8 @@
   "message": "A new update is available.",
   "addons": [
     "repository.cocoscrapers",
+    "script.module.cocoscrapers",
+
 
     "plugin.program.autocompletion",
     "plugin.program.autowidget",
