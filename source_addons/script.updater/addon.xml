@@ -14,6 +14,7 @@
         <import addon="plugin.program.autowidget" version="0.0.0"/>
         <import addon="plugin.video.fenlight" version="0.0.0"/>
         <import addon="plugin.video.themoviedb.helper" version="0.0.0"/>
+        <import addon="script.module.jurialmunkey" version="0.0.0"/>
 
         <import addon="pvr.iptvsimple" version="0.0.0"/>
 

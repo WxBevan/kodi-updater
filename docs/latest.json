@@ -4,6 +4,7 @@
   "addons": [
     "repository.cocoscrapers",
     "script.module.cocoscrapers",
+    "script.module.jurialmunkey",
 
 
     "plugin.program.autocompletion",
