@@ -1124,35 +1124,69 @@ def write_filtered_epg(root, selected_xmltv_ids):
 
 def download_file(url, output_path, description="file"):
     output_path = Path(output_path)
-    curl = shutil.which("curl.exe") or shutil.which("curl")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if output_path.exists():
         output_path.unlink()
 
+    errors = []
+
+    # Prefer Python inside Kodi. This avoids depending on whatever curl binary
+    # Kodi happens to find in its environment.
+    try:
+        print("Downloading with Python:", redact_url(url))
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "*/*",
+                "Connection": "close",
+            }
+        )
+
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = response.read()
+
+        if data:
+            output_path.write_bytes(data)
+
+    except Exception as error:
+        errors.append("Python download failed: %s" % str(error))
+
+    if output_path.exists() and output_path.stat().st_size > 0:
+        return
+
+    # Fallback to the simple curl command style you tested successfully in CMD.
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+
     if curl:
-        command = [curl, "-L", "--fail", "--compressed", url, "-o", str(output_path)]
-        printable_command = [redact_url(part) if part == url else part for part in command]
-        print("Running:", " ".join(printable_command))
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.returncode != 0:
-            details = (result.stderr or result.stdout or "").strip()
-            raise GeneratorError(
-                f"Could not download {description}. Check the server URL and connection.\n{details}"
-            )
-    else:
-        print(f"curl not found. Downloading with Python: {redact_url(url)}")
-        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                output_path.write_bytes(response.read())
+            if output_path.exists():
+                output_path.unlink()
+
+            command = [curl, "-L", url, "-o", str(output_path)]
+            printable_command = [redact_url(part) if part == url else part for part in command]
+
+            print("curl path:", curl)
+            print("Running fallback curl:", " ".join(printable_command))
+
+            result = subprocess.run(command, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                details = (result.stderr or result.stdout or "").strip()
+                errors.append("curl failed with code %s: %s" % (result.returncode, details))
+
         except Exception as error:
-            raise GeneratorError(
-                f"Could not download {description}. Check the URL and connection.\n{error}"
-            ) from error
+            errors.append("curl exception: %s" % str(error))
+    else:
+        errors.append("curl was not found.")
 
     if not output_path.exists() or output_path.stat().st_size == 0:
         raise GeneratorError(
-            f"Could not download {description}. The server returned an empty file: {output_path}"
+            "Could not download %s.[CR][CR]%s" % (
+                description,
+                "[CR][CR]".join(errors) if errors else "Unknown download error."
+            )
         )
 
 
