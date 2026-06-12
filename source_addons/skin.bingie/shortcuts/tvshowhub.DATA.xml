@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BINGIE -->
+<shortcuts>
+
+    <shortcut>
+        <label>Recommended TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?action=trakt_recommendations&amp;iconImage=%2fstorage%2f.kodi%2faddons%2fplugin.video.fenlight%2fresources%2fmedia%2ficons%2ftv.png&amp;mode=random.build_tvshow_list&amp;name=Random%20Trakt%20Recommended%20TV%20Shows&amp;new_page=shows&amp;random=true</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Trending TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=trakt_tv_trending&amp;iconImage=trending&amp;name=Trending%20TV%20Shows</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Popular TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_popular&amp;iconImage=popular&amp;name=Popular%20TV%20Shows</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Popular on Netflix</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_providers&amp;key_id=8&amp;iconImage=providers&amp;name=Popular%20on%20Netflix</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Airing Today</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_airing_today&amp;iconImage=live&amp;name=Airing%20Today</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Most Watched TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=trakt_tv_most_watched&amp;iconImage=most_watched&amp;name=Most%20Watched%20TV%20Shows</action>
+    </shortcut>
+
+    <shortcut>
+        <label>IMDb Top 250 TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=marvinolsob&amp;slug=top-250-tv-series-imdb&amp;list_type=user_lists&amp;list_name=IMDb%20Top%20250%20TV%20Shows&amp;iconImage=trakt&amp;name=IMDb%20Top%20250%20TV%20Shows</action>
+    </shortcut>
+
+</shortcuts>

@@ -240,7 +240,7 @@ def main():
 
         zip_path = zip_addon(addon_dir, addon_id, version)
         copy_asset_files(addon_dir, addon_id)
-        
+
         addon_xml_texts.append(addon_xml_text)
 
         # Put a copy of the repository zip at the web root so it is easy to install from Kodi.

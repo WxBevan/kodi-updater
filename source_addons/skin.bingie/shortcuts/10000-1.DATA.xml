@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BINGIE -->
+<shortcuts>
+
+    <shortcut>
+        <label>Movies Continue Watching</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=in_progress_movies&amp;iconImage=player&amp;name=Movies%20Continue%20Watching</action>
+    </shortcut>
+
+    <shortcut>
+        <label>TV Shows Continue Watching</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_in_progress_episode&amp;iconImage=player&amp;name=TV%20Shows%20Continue%20Watching</action>
+    </shortcut>
+
+    <shortcut>
+        <label>New Movie Releases Digital</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=leepmc1984&amp;slug=new-movie-releases-digital&amp;list_type=user_lists&amp;list_name=New%20Movie%20Releases%20Digital&amp;iconImage=trakt&amp;name=New%20Movie%20Releases%20Digital</action>
+    </shortcut>
+
+    <shortcut>
+        <label>New TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=leepmc1984&amp;slug=new-tv-shows&amp;list_type=user_lists&amp;list_name=New%20TV%20Shows&amp;iconImage=trakt&amp;name=New%20TV%20Shows</action>
+    </shortcut>
+
+</shortcuts>

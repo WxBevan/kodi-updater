@@ -2,6 +2,15 @@
   "build_version": "1.0.7",
   "message": "A new update is available.",
   "addons": [
+  
+
+    "script.bingie.helper",
+    "script.bingie.toolbox",
+    "script.bingie.widgets",
+    "script.skinshortcuts",
+    "resource.images.studios.coloured",
+    "plugin.video.tmdb.bingie.helper",
+    "plugin.program.autocompletion",
     "script.module.cocoscrapers",
     "script.module.jurialmunkey",
 
@@ -10,12 +19,6 @@
     "plugin.program.autocompletion",
     "plugin.program.autowidget",
     "plugin.video.fenlight",
-    "plugin.video.themoviedb.helper",
-
-    "script.bingie.helper",
-    "script.bingie.toolbox",
-    "script.bingie.widgets",
-    "script.skinshortcuts",
 
     "service.autoexec",
     "service.autostop",

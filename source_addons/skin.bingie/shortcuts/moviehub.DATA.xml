@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BINGIE -->
+<shortcuts>
+
+    <shortcut>
+        <label>Recommended Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?action=trakt_recommendations&amp;iconImage=%2fstorage%2f.kodi%2faddons%2fplugin.video.fenlight%2fresources%2fmedia%2ficons%2fmovies.png&amp;mode=random.build_movie_list&amp;name=Random%20Trakt%20Recommended%20Movies&amp;new_page=movies&amp;random=true</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Trending Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=trakt_movies_trending&amp;iconImage=trending&amp;name=Trending%20Movies</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Popular Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_popular&amp;iconImage=popular&amp;name=Popular%20Movies</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Popular on Netflix</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_providers&amp;key_id=8&amp;iconImage=providers&amp;name=Popular%20on%20Netflix</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Latest Releases</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_latest_releases&amp;iconImage=dvd&amp;name=Latest%20Releases</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Most Watched Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=trakt_movies_most_watched&amp;iconImage=most_watched&amp;name=Most%20Watched%20Movies</action>
+    </shortcut>
+
+    <shortcut>
+        <label>IMDb Top 250 Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=georgenilas&amp;slug=imdb-top-250&amp;list_type=user_lists&amp;list_name=IMDb%20Top%20250%20Movies&amp;iconImage=trakt&amp;name=IMDb%20Top%20250%20Movies</action>
+    </shortcut>
+
+</shortcuts>
