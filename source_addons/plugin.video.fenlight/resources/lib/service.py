@@ -223,7 +223,8 @@ class FenLightMonitor(Monitor):
 		AddonXMLCheck().run()
 		Thread(target=CustomFonts().run).start()
 		Thread(target=TraktMonitor().run).start()
-		Thread(target=UpdateCheck().run).start()
+		## FLAM private build: disable built-in Fen Light GitHub updater.
+		## Thread(target=UpdateCheck().run).start()
 		Thread(target=WidgetRefresher().run).start()
 		AutoStart().run()
 

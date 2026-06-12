@@ -7,7 +7,7 @@ from caches.random_widgets_cache import RandomWidgets
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from modules import meta_lists
-from modules.settings import paginate, page_limit
+from modules.settings import paginate, page_limit, trakt_user_active
 from modules import kodi_utils
 from modules.utils import manual_function_import, make_thread_list
 # logger = kodi_utils.logger
@@ -46,6 +46,16 @@ class RandomLists():
 	'trakt_tv_certifications': meta_lists.tvshow_certifications, 'tmdb_anime_year': meta_lists.years_tvshows, 'tmdb_anime_decade': meta_lists.decades_tvshows,
 	'tmdb_anime_genres': meta_lists.anime_genres, 'tmdb_anime_providers': meta_lists.watch_providers_tvshows, 'trakt_anime_certifications': meta_lists.tvshow_certifications}
 	tvshow_trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
+
+
+	def trakt_required_dialog(self):
+		if kodi_utils.get_property('fenlight.trakt_required_dialog_shown') != 'true':
+			kodi_utils.set_property('fenlight.trakt_required_dialog_shown', 'true')
+			kodi_utils.ok_dialog(
+				heading='Trakt Required',
+				text='Please connect Trakt in the Accounts section.'
+			)
+		return kodi_utils.end_directory(self.handle, cacheToDisc=False)
 
 
 	def __init__(self, params):
@@ -99,19 +109,37 @@ class RandomLists():
 	def random_trakt_main(self):
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)
 		function_key, list_key = ('movies', 'movie') if self.menu_type == 'movie' else ('shows', 'show')
+
+		if self.action == 'trakt_recommendations' and not trakt_user_active():
+			return self.trakt_required_dialog()
+
 		if not random_list:
 			list_function = self.get_function()
 			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(x)), [function_key,] \
 						if self.action == 'trakt_recommendations' else self.get_sample()))
 			[i.join() for i in threads]
+
+			if self.action == 'trakt_recommendations':
+				valid_results = [
+					i for i in self.random_results
+					if isinstance(i, dict) and ('ids' in i or list_key in i)
+				]
+				if not valid_results:
+					return self.trakt_required_dialog()
+				self.random_results = valid_results
+
 			random_list = random.sample(self.random_results, min(len(self.random_results), 50))
 			if cache_to_memory: set_persistent_content(self.database, self.action, random_list)
+
 		try: self.params['list'] = [i[list_key]['ids'] for i in random_list]
 		except: self.params['list'] = [i['ids'] for i in random_list]
+
 		self.params['id_type'] = 'trakt_dict'
 		self.list_items = self.function(self.params).worker()
 		self.category_name = self.params_get('category_name', None) or self.base_list_name or ''
 		self.make_directory()
+
+		
 
 	def random_special_main(self):
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)

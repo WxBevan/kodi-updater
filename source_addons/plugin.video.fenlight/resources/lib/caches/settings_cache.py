@@ -202,8 +202,8 @@ def default_settings():
 #==================== Manage Updates
 {'setting_id': 'update.action', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Prompt', '1': 'Automatic', '2': 'Notification', '3': 'Off'}},
 {'setting_id': 'update.delay', 'setting_type': 'action', 'setting_default': '10', 'min_value': '10', 'max_value': '300'},
-{'setting_id': 'update.username', 'setting_type': 'string', 'setting_default': 'FenlightAnonyMouse'},
-{'setting_id': 'update.location', 'setting_type': 'string', 'setting_default': 'FenlightAnonyMouse.github.io'},
+{'setting_id': 'update.username', 'setting_type': 'string', 'setting_default': ''},
+{'setting_id': 'update.location', 'setting_type': 'string', 'setting_default': ''},
 #==================== Watched Indicators
 {'setting_id': 'watched_indicators', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Fen Light', '1': 'Trakt'}},
 #======+============= Trakt Cache
@@ -334,6 +334,10 @@ def default_settings():
 
 
 
+
+#==================== Streamlined FLAM Settings
+{'setting_id': 'simple.max_resolution', 'setting_type': 'action', 'setting_default': '4K', 'settings_options': {'4K': '4K', '1080p': '1080p', '720p': '720p', 'SD': 'SD'}},
+
 #=====================================================================================#
 #====================================IPTV ACCOUNTS====================================#
 #=====================================================================================#
@@ -351,8 +355,8 @@ def default_settings():
 #====================================STREAMING ACCOUNTS===============================#
 #=====================================================================================#
 #==================== External
-{'setting_id': 'provider.external', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'provider.external', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'CocoScrapers Module'},
 {'setting_id': 'external.cache_check', 'setting_type': 'boolean', 'setting_default': 'false'},
 {'setting_id': 'external.filter_sources', 'setting_type': 'boolean', 'setting_default': 'true'},
 #==================== Real Debrid
@@ -532,7 +536,7 @@ def default_settings():
 {'setting_id': 'lists_cache_duraton_display_name', 'setting_type': 'string', 'setting_default': '1 Day'},
 {'setting_id': 'results.limit_number_quality_name', 'setting_type': 'string', 'setting_default': 'Off'},
 {'setting_id': 'results.limit_number_total_name', 'setting_type': 'string', 'setting_default': 'Off'},
-{'setting_id': 'external_scraper.module', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'external_scraper.module', 'setting_type': 'string', 'setting_default': 'script.module.cocoscrapers'},
 {'setting_id': 'trakt.next_daily_clear', 'setting_type': 'string', 'setting_default': '0'},
 {'setting_id': 'trakt.expires', 'setting_type': 'string', 'setting_default': '0'},
 {'setting_id': 'trakt.refresh', 'setting_type': 'string', 'setting_default': '0'},

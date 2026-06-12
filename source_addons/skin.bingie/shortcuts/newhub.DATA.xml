@@ -1,35 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- BINGIE -->
 <shortcuts>
+
     <shortcut>
-        <label>$VAR[DefNewHubName]</label>
+        <label>New Digital Movie Releases</label>
         <label2 />
         <icon />
         <thumb />
-        <action>$VAR[DefNewHubContent]</action>
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_latest_releases&amp;iconImage=dvd&amp;name=New%20Digital%20Movie%20Releases</action>
     </shortcut>
+
     <shortcut>
-        <label>$VAR[DefNewHub1Name]</label>
+        <label>New TV Shows</label>
         <label2 />
         <icon />
         <thumb />
-        <action>$VAR[DefNewHub1Content]</action>
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_premieres&amp;iconImage=fresh&amp;name=New%20TV%20Shows</action>
     </shortcut>
+
     <shortcut>
-        <label>$VAR[DefNewHub2Name]</label>
+        <label>Trending Movies</label>
         <label2 />
         <icon />
         <thumb />
-        <action>$VAR[DefNewHub2Content]</action>
-		<visible>!Library.HasContent(Movies) + !Library.HasContent(TVShows)</visible>
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=trakt_movies_trending&amp;iconImage=trending&amp;name=Trending%20Movies</action>
     </shortcut>
-	<shortcut>
-        <label>$VAR[DefNewHub3Name]</label>
+
+    <shortcut>
+        <label>Trending TV Shows</label>
         <label2 />
         <icon />
         <thumb />
-        <action>$VAR[DefNewHub3Content]</action>
-		<visible>!Library.HasContent(Movies) + !Library.HasContent(TVShows)</visible>
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=trakt_tv_trending&amp;iconImage=trending&amp;name=Trending%20TV%20Shows</action>
     </shortcut>
-    
+
+    <shortcut>
+        <label>Popular Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_popular&amp;iconImage=popular&amp;name=Popular%20Movies</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Popular TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_popular&amp;iconImage=popular&amp;name=Popular%20TV%20Shows</action>
+    </shortcut>
+
 </shortcuts>

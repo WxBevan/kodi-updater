@@ -7,24 +7,24 @@
         <value condition="!String.IsEmpty(Window.Property(SuggestionPath)) + [ControlGroup(77777).HasFocus() | Control.HasFocus(1007) | [Control.HasFocus(900) + !String.IsEmpty(Window.Property(KeepSuggestions))]]">$INFO[Container(1007).ListItem.Label]</value>
     </variable>
 	
-	<variable name="SearchTMDBAll">
-        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.tmdb.bingie.helper?info=search&amp;tmdb_type=both&amp;nextpage=false&amp;query=</value>
+    <variable name="SearchTMDBAll">
+        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.fenlight/?mode=search.bingie_all&amp;query=</value>
     </variable>
 	
 	<variable name="SearchTMDBMovies">
-        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.tmdb.bingie.helper?info=search&amp;tmdb_type=movie&amp;nextpage=false&amp;query=</value>
+        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_search&amp;iconImage=search&amp;name=Search%20Movies&amp;query=</value>
     </variable>
-	
+
 	<variable name="SearchTMDBCollections">
         <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.tmdb.bingie.helper?info=search&amp;tmdb_type=collection&amp;nextpage=false&amp;query=</value>       
     </variable>
 	
-	<variable name="SearchTMDBShows">
-        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.tmdb.bingie.helper?info=search&amp;tmdb_type=tv&amp;nextpage=false&amp;query=</value>       
+    <variable name="SearchTMDBShows">
+        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_search&amp;iconImage=search&amp;name=Search%20TV%20Shows&amp;query=</value>
     </variable>
-	
-	<variable name="SearchTMDBPeople">
-        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.tmdb.bingie.helper?info=search&amp;tmdb_type=person&amp;nextpage=false&amp;query=</value>       
+
+    <variable name="SearchTMDBPeople">
+        <value condition="!String.IsEmpty(Control.GetLabel(987)) + !String.IsEmpty(Skin.String(CustomSearchTerm))">plugin://plugin.video.fenlight/?mode=person_direct.search&amp;query=</value>
     </variable>
 
     <variable name="EmptySearchResultsString">

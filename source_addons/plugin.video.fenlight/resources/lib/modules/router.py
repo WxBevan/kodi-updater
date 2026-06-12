@@ -104,7 +104,10 @@ def routing(sys):
 			from modules.watched_status import unmark_previous_episode
 			unmark_previous_episode(params)
 	elif 'search.' in mode:
-		if mode == 'search.get_key_id':
+		if mode == 'search.bingie_all':
+			from modules.search import bingie_all
+			bingie_all(params)
+		elif mode == 'search.get_key_id':
 			from modules.search import get_key_id
 			get_key_id(params)
 		elif mode == 'search.clear_search':

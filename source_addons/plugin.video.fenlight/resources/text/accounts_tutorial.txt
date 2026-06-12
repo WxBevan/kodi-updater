@@ -1,0 +1,10 @@
+Welcome to FLAM
+
+1. Open Accounts.
+2. Connect Trakt.
+3. Connect TorBox.
+4. Enter Xtream IPTV details if using Live TV.
+5. Use General Settings to choose your max resolution and autoplay preference.
+
+You can edit this tutorial text in:
+resources/text/accounts_tutorial.txt

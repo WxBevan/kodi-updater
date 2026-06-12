@@ -9,6 +9,9 @@
     "script.bingie.widgets",
     "script.skinshortcuts",
     "resource.images.studios.coloured",
+    "resource.images.studios.white",
+
+
     "plugin.video.tmdb.bingie.helper",
     "plugin.program.autocompletion",
     "script.module.cocoscrapers",

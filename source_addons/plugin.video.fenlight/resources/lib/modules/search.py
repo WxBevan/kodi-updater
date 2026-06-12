@@ -80,4 +80,113 @@ def clear_all(setting_id, refresh='false'):
 	notification('Success', 2500)
 	if refresh == 'true': kodi_refresh()
 
-	
+def bingie_all(params):
+    from urllib.parse import unquote
+    from apis.tmdb_api import tmdb_movies_search, tmdb_tv_search, tmdb_people_info
+    from indexers.movies import Movies
+    from indexers.tvshows import TVShows
+    from modules import kodi_utils
+
+    def _safe_results(function, query, page_no=1):
+        try:
+            return function(query, page_no).get('results', [])
+        except Exception:
+            return []
+
+    def _people_items(query, limit=20):
+        try:
+            people = tmdb_people_info(query).get('results', [])
+            people = sorted(people, key=lambda k: k.get('popularity', 0.0), reverse=True)[:limit]
+        except Exception:
+            people = []
+
+        icon = kodi_utils.get_icon('empty_person')
+        fanart = kodi_utils.addon_fanart()
+
+        for item in people:
+            try:
+                actor_id = int(item['id'])
+                actor_name = item['name']
+                profile_path = item.get('profile_path')
+                actor_image = 'https://image.tmdb.org/t/p/h632%s' % profile_path if profile_path else icon
+
+                known_titles = []
+                for known_item in item.get('known_for', []):
+                    title = known_item.get('title') or known_item.get('name')
+                    if title:
+                        known_titles.append(title)
+
+                known_for = '[B]Known for:[/B]\n%s' % '\n'.join(known_titles) if known_titles else ' '
+
+                url = kodi_utils.build_url({
+                    'mode': 'person_data_dialog',
+                    'actor_name': actor_name,
+                    'actor_image': actor_image,
+                    'actor_id': actor_id
+                })
+
+                listitem = kodi_utils.make_listitem()
+                listitem.setLabel(actor_name)
+                listitem.setArt({
+                    'icon': actor_image,
+                    'poster': actor_image,
+                    'thumb': actor_image,
+                    'fanart': fanart,
+                    'banner': actor_image
+                })
+
+                info_tag = listitem.getVideoInfoTag(True)
+                info_tag.setMediaType('video')
+                info_tag.setTitle(actor_name)
+                info_tag.setPlot(known_for)
+
+                yield (url, listitem, False)
+            except Exception:
+                pass
+
+    query = unquote(params.get('query') or params.get('key_id') or '').strip()
+    handle = int(kodi_utils.sys.argv[1])
+
+    if not query:
+        kodi_utils.set_content(handle, 'movies')
+        kodi_utils.set_category(handle, 'Search')
+        return kodi_utils.end_directory(handle, cacheToDisc=False)
+
+    items = []
+    limit_each = int(params.get('limit_each', '20'))
+
+    # Movies, built by FLAM so movie context menu/playback is FLAM.
+    movie_results = _safe_results(tmdb_movies_search, query)[:limit_each]
+    movie_ids = [i.get('id') for i in movie_results if i.get('id')]
+    if movie_ids:
+        movie_indexer = Movies({
+            'mode': 'build_movie_list',
+            'action': 'tmdb_movies_search',
+            'query': query,
+            'name': 'Movies'
+        })
+        movie_indexer.list = movie_ids
+        movie_indexer.new_page = {}
+        items.extend(movie_indexer.worker())
+
+    # TV shows, built by FLAM so TV context menu/browse/playback is FLAM.
+    tv_results = _safe_results(tmdb_tv_search, query)[:limit_each]
+    tv_ids = [i.get('id') for i in tv_results if i.get('id')]
+    if tv_ids:
+        tv_indexer = TVShows({
+            'mode': 'build_tvshow_list',
+            'action': 'tmdb_tv_search',
+            'query': query,
+            'name': 'TV Shows'
+        })
+        tv_indexer.list = tv_ids
+        tv_indexer.new_page = {}
+        items.extend(tv_indexer.worker())
+
+    # People, still opened through FLAM's people dialog.
+    items.extend(list(_people_items(query, limit_each)))
+
+    kodi_utils.add_items(handle, items)
+    kodi_utils.set_content(handle, 'movies')
+    kodi_utils.set_category(handle, 'Search: %s' % query)
+    kodi_utils.end_directory(handle, cacheToDisc=False)

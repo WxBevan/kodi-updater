@@ -19,11 +19,11 @@
     </shortcut>
 
     <shortcut>
-        <label>New Movie Releases Digital</label>
+        <label>New Digital Movie Releases</label>
         <label2 />
         <icon />
         <thumb />
-        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=leepmc1984&amp;slug=new-movie-releases-digital&amp;list_type=user_lists&amp;list_name=New%20Movie%20Releases%20Digital&amp;iconImage=trakt&amp;name=New%20Movie%20Releases%20Digital</action>
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_latest_releases&amp;iconImage=dvd&amp;name=New%20Digital%20Movie%20Releases</action>
     </shortcut>
 
     <shortcut>
@@ -31,7 +31,7 @@
         <label2 />
         <icon />
         <thumb />
-        <action>plugin://plugin.video.fenlight/?mode=trakt.list.build_trakt_list&amp;user=leepmc1984&amp;slug=new-tv-shows&amp;list_type=user_lists&amp;list_name=New%20TV%20Shows&amp;iconImage=trakt&amp;name=New%20TV%20Shows</action>
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_premieres&amp;iconImage=fresh&amp;name=New%20TV%20Shows</action>
     </shortcut>
-
+    
 </shortcuts>

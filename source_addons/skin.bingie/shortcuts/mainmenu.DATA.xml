@@ -10,6 +10,16 @@
 		<action>ActivateWindow(1109,return)</action>
 	</shortcut>
 
+	<!-- Live TV -->
+	<shortcut>
+		<label>Live TV</label>
+		<label2 />
+		<icon>shortcuts/tv.png</icon>
+		<thumb />
+		<action>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.open_live_tv)</action>
+	</shortcut>
+
+
 	<!-- Home -->
 	<shortcut>
 		<label>$LOCALIZE[10000]</label>

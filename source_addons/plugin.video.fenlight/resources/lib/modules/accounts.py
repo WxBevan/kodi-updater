@@ -10,6 +10,15 @@ XTREAM_SETTINGS = {
     'xtream.password': 'Xtream Password'
 }
 
+RESOLUTION_CHOICES = [
+    ('4K', 'SD, 720p, 1080p, 4K'),
+    ('1080p', 'SD, 720p, 1080p'),
+    ('720p', 'SD, 720p'),
+    ('SD', 'SD')
+]
+
+
+
 
 def _clean(value):
     return '' if value in _EMPTY else str(value)
@@ -21,6 +30,71 @@ def _is_set(value):
 
 def _masked_status(setting_id):
     return 'Configured' if _is_set(get_setting('fenlight.%s' % setting_id, 'empty_setting')) else 'Not Set'
+
+
+
+#==================== General Settings Actions ====================#
+
+
+def set_max_resolution(params=None):
+    import json
+
+    list_items = [{'line1': item[0]} for item in RESOLUTION_CHOICES]
+    choice = k.select_dialog(
+        RESOLUTION_CHOICES,
+        items=json.dumps(list_items),
+        narrow_window='true',
+        heading='Max Resolution'
+    )
+
+    if choice is None:
+        return
+
+    label, quality_string = choice
+
+    # Source select quality limits.
+    set_setting('results_quality_movie', quality_string)
+    set_setting('results_quality_episode', quality_string)
+
+    # Autoplay quality limits.
+    set_setting('autoplay_quality_movie', quality_string)
+    set_setting('autoplay_quality_episode', quality_string)
+
+    # Simple display value for the streamlined Accounts window.
+    set_setting('simple.max_resolution', label)
+
+    k.notification('Max resolution set to %s' % label, 3000)
+
+
+def toggle_autoplay(params=None):
+    movie_enabled = get_setting('fenlight.auto_play_movie', 'false') == 'true'
+    episode_enabled = get_setting('fenlight.auto_play_episode', 'false') == 'true'
+
+    # If both are already enabled, turn both off. Otherwise turn both on.
+    new_value = 'false' if movie_enabled and episode_enabled else 'true'
+
+    set_setting('auto_play_movie', new_value)
+    set_setting('auto_play_episode', new_value)
+
+    k.notification('Autoplay %s' % ('enabled' if new_value == 'true' else 'disabled'), 3000)
+
+
+def show_tutorial(params=None):
+    tutorial_file = k.translate_path('special://home/addons/plugin.video.fenlight/resources/text/accounts_tutorial.txt')
+
+    try:
+        return k.show_text('FLAM Tutorial', file=tutorial_file, font_size='large')
+    except Exception:
+        return k.show_text(
+            'FLAM Tutorial',
+            text='Welcome to FLAM.[CR][CR]Edit resources/text/accounts_tutorial.txt to change this tutorial text.',
+            font_size='large'
+        )
+    
+
+#==================== Xtream IPTV ====================#
+
+
 
 
 def set_xtream_setting(params):
@@ -176,3 +250,15 @@ def generate_iptv(params=None):
         k.set_property('fenlight.iptv_generation_running', 'false')
 
     return k.ok_dialog(heading=final_heading, text=final_text)
+
+
+def open_live_tv(params=None):
+    iptv_m3u = 'special://userdata/addon_data/plugin.video.fenlight/iptv/IPTV.m3u'
+
+    if not k.path_exists(iptv_m3u):
+        return k.ok_dialog(
+            heading='Live TV',
+            text='Please enter Xtream details in Account Settings and generate Live TV.'
+        )
+
+    return k.execute_builtin('ActivateWindow(TVGuide)')

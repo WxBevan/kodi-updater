@@ -209,8 +209,12 @@
 			<onleft condition="!String.IsEmpty(Skin.String(CustomSearchTerm))">11</onleft>
             <onback condition="String.IsEmpty(Skin.String(CustomSearchTerm)) + !String.IsEmpty(Window.Property(SuggestionPath))">1007</onback>
 			<onback condition="!String.IsEmpty(Skin.String(CustomSearchTerm))">11</onback>
-			<include condition="Library.HasContent(Movies) | Library.HasContent(TVShows)">skinshortcuts-template-search</include>
-			<include condition="!Library.HasContent(Movies) + !Library.HasContent(TVShows)">skinshortcuts-template-tmdbsearch</include>
+			<include>skinshortcuts-template-tmdbsearch</include>
+            
+            <!-- <include condition="Library.HasContent(Movies) | Library.HasContent(TVShows)">skinshortcuts-template-search</include>
+			<include condition="!Library.HasContent(Movies) + !Library.HasContent(TVShows)">skinshortcuts-template-tmdbsearch</include> -->
+
+            
 			<!-- Suggestions Result -->
             <include content="SearchResultWidget">
                 <param name="id" value="500" />

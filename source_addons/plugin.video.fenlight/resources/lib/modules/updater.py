@@ -41,6 +41,7 @@ def version_check(current_version, online_version):
 	return string_alphanum_to_num(current_version) != string_alphanum_to_num(online_version)
 
 def update_check(action=4):
+	return
 	if action == 3: return
 	current_version, online_version = get_versions()
 	if not current_version: return

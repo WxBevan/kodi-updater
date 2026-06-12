@@ -98,9 +98,15 @@
                     </control>
                 </focusedlayout>
                 <content>
-                      <item id="5">
-                          <property name="setting_label">Accounts</property>
-                      </item>
+                    <item id="5">
+                        <property name="setting_label">Accounts</property>
+                    </item>
+                    <item id="10">
+                        <property name="setting_label">General Settings</property>
+                    </item>
+                    <item id="15">
+                        <property name="setting_label">Tutorial</property>
+                    </item>
                 </content>
             </control>
             <control type="fixedlist" id="2100">
@@ -494,6 +500,60 @@
                           <property name="setting_description">Revoke authorization for the current Trakt account.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
                       </item>
+<!-- GENERAL SETTINGS 10 -->
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Playback</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Max Resolution</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.simple.max_resolution)]</property>
+                          <property name="setting_description">Set the maximum quality for both Movies and TV Shows.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_max_resolution)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_movie),true) + String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
+                          <property name="setting_label">Autoplay</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">true</property>
+                          <property name="setting_description">Toggle autoplay for both Movies and TV Shows.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_autoplay)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.auto_play_movie),true) | !String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
+                          <property name="setting_label">Autoplay</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">false</property>
+                          <property name="setting_description">Toggle autoplay for both Movies and TV Shows.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_autoplay)</onclick>
+                      </item>
+
+<!-- TUTORIAL 15 -->
+                      <item>
+                          <visible>Container(2000).HasFocus(15)</visible>
+                          <property name="setting_label">Tutorial</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(15)</visible>
+                          <property name="setting_label">Open Tutorial</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Open the FLAM tutorial text.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.show_tutorial)</onclick>
+                      </item>
+
+
+
+
+
                 </content>
             </control>
             <control type="group">
