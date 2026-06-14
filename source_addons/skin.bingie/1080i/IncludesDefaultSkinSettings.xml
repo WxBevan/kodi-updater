@@ -14,6 +14,13 @@
   
   <!-- various default settings  -->
   <include name="DefaultSkinSettingsValues">
+    
+<!-- Remove side menu thing on side tabs-->
+    <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(DisableAllSubmenus)</onload>
+    <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.Reset(AutoShowSubmenu)</onload>
+
+
+<!-- end -->
     <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(BingieFirstStartupDone)</onload>
     <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(BingieSecondStartupDone)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(View514_ShowCDart)</onload>

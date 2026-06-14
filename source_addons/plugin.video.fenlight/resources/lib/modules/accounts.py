@@ -63,7 +63,6 @@ def set_max_resolution(params=None):
     # Simple display value for the streamlined Accounts window.
     set_setting('simple.max_resolution', label)
 
-    k.notification('Max resolution set to %s' % label, 3000)
 
 
 def toggle_autoplay(params=None):
@@ -76,7 +75,6 @@ def toggle_autoplay(params=None):
     set_setting('auto_play_movie', new_value)
     set_setting('auto_play_episode', new_value)
 
-    k.notification('Autoplay %s' % ('enabled' if new_value == 'true' else 'disabled'), 3000)
 
 
 def show_tutorial(params=None):
@@ -124,7 +122,6 @@ def set_xtream_setting(params):
 
     set_setting(setting_id, new_value or 'empty_setting')
     k.set_property('fenlight.xtream_input_last_finished', str(time.time()))
-    k.notification('%s saved' % heading, 3000)
 
 
 
@@ -472,7 +469,6 @@ def choose_audio_output(params=None):
                 text='Audio device selected, but some settings could not be updated:[CR][CR]%s' % '[CR]'.join(failed)
             )
 
-        return k.notification('Audio output set to %s' % label, 3000)
 
     except Exception as exc:
         return k.ok_dialog(
@@ -503,9 +499,6 @@ def toggle_audio_setting(params):
 
         _set_kodi_setting_value(setting_id, new_value)
         refresh_audio_properties()
-
-        label = AUDIO_TOGGLE_SETTINGS[setting_id][1]
-        k.notification('%s %s' % (label, 'enabled' if new_value else 'disabled'), 3000)
 
     except Exception as exc:
         return k.ok_dialog(
@@ -555,11 +548,6 @@ def set_size_limits(params=None):
 
             label = 'Movies %s MB / TV %s MB' % (movie_size, episode_size)
 
-        if filter_method == '0':
-            set_setting('results.filter_size_method', '0')
-            set_setting('simple.size_limits', 'Off')
-            k.set_property('fenlight.simple.size_limits', 'Off')
-            return k.notification('Size filtering disabled', 3000)
 
         set_setting('results.filter_size_method', '2')
         set_setting('results.movie_size_min', '0')
@@ -570,7 +558,6 @@ def set_size_limits(params=None):
         set_setting('simple.size_limits', label)
         k.set_property('fenlight.simple.size_limits', label)
 
-        return k.notification('Size limits set: %s' % label, 3000)
 
     except Exception as exc:
         return k.ok_dialog(

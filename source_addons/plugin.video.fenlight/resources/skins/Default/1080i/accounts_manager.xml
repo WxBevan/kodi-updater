@@ -534,6 +534,14 @@
                           <property name="setting_description">Toggle autoplay for both Movies and TV Shows.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_autoplay)</onclick>
                       </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Size Limits</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.simple.size_limits)]</property>
+                          <property name="setting_description">Set result size filtering. Recommended is Movies 30000 MB and TV episodes 15000 MB.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_size_limits)</onclick>
+                      </item>
 
 
 <!-- AUDIO SETTINGS 10 -->

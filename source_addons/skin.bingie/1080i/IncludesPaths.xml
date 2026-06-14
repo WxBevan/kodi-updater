@@ -633,7 +633,7 @@
     </variable>
 
     <variable name="AnimeMovies">
-        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_keyword_results_direct&amp;key_id=210024&amp;name=Anime%20Movies</value>
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_anime_genres&amp;key_id=16&amp;name=Anime</value>
     </variable>
 
     <variable name="CrimeMovies">
@@ -694,16 +694,6 @@
 
     <variable name="DocumentaryTVShows">
         <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=99&amp;name=Documentary%20TV%20Shows</value>
-    </variable>
-
-<!-- Added this, should technically have same style with condition stuff above, but shouldnt be an issue-->
-    <variable name="AnimeTVShowsWidget">
-        <value condition="!String.IsEmpty(Skin.String(AnimeTVShows.path))">$INFO[Skin.String(AnimeTVShows.path)]</value>
-        <value>$VAR[AnimeTVShows]</value>
-    </variable>
-
-    <variable name="AnimeTVShows">
-       <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_anime_popular&amp;iconImage=anime&amp;name=Anime%20TV%20Shows</value>
     </variable>
 
     <variable name="CrimeTVShows">
