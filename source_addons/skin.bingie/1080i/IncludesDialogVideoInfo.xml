@@ -1753,7 +1753,7 @@
 
 							<!--More episodes-->
                             <control type="radiobutton" id="53">
-                                <visible>$EXP[IsTvShowDBTypeNoFallback] | $EXP[IsSeasonDBTypeNoFallback] | [$EXP[IsEpisodeDBTypeNoFallback] + !String.IsEmpty(ListItem.DBID)]</visible>
+                                <visible>[Skin.HasSetting(videoinfo_button_play_next) + Control.IsVisible(5050) + String.IsEqual(ListItem.dbtype,tvshow)] | $EXP[IsTvShowDBTypeNoFallback] | $EXP[IsSeasonDBTypeNoFallback] | [$EXP[IsEpisodeDBTypeNoFallback] + !String.IsEmpty(ListItem.DBID)]</visible>
                                 <include>Bingie_InfoDialog_Button_Default_Defs</include>
                                 <include content="Bingie_InfoDialog_Button_Texture">
                                     <param name="radiotexture" value="dialogs/videoinfo/info/more_episodes.png"/>
