@@ -554,6 +554,15 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.gui_sounds.available),true)</visible>
+                          <property name="setting_label">Kodi GUI Sounds</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.gui_sounds.label)]</property>
+                          <property name="setting_description">Choose when Kodi should play interface navigation sounds.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_gui_sounds)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
                           <property name="setting_label">Output Device</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.output_device.label)]</property>

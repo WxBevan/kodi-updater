@@ -268,6 +268,13 @@ def open_live_tv(params=None):
 
 AUDIO_DEVICE_SETTING = 'audiooutput.audiodevice'
 AUDIO_PASSTHROUGH_DEVICE_SETTING = 'audiooutput.passthroughdevice'
+AUDIO_GUI_SOUNDS_SETTING = 'audiooutput.guisoundmode'
+
+GUI_SOUND_CHOICES = [
+    ('Never', 0),
+    ('Only when playback stopped', 1),
+    ('Always', 2),
+]
 
 AUDIO_TOGGLE_SETTINGS = {
     'audiooutput.passthrough': ('audio.passthrough', 'Allow Passthrough'),
@@ -378,6 +385,19 @@ def _label_for_setting_value(setting_id, value):
     return str(value)
 
 
+def _gui_sounds_label(value):
+    try:
+        value = int(value)
+    except Exception:
+        return 'Unknown'
+
+    for label, option_value in GUI_SOUND_CHOICES:
+        if option_value == value:
+            return label
+
+    return 'Unknown'
+
+
 def refresh_audio_properties(params=None):
     """
     Populate window properties used by accounts_manager.xml.
@@ -390,6 +410,22 @@ def refresh_audio_properties(params=None):
 
         k.set_property('fenlight.audio.output_device', str(current_device or ''))
         k.set_property('fenlight.audio.output_device.label', device_label or 'Not Set')
+
+        gui_sounds_available = _setting_available(AUDIO_GUI_SOUNDS_SETTING, details)
+        k.set_property('fenlight.audio.gui_sounds.available', 'true' if gui_sounds_available else 'false')
+
+        if gui_sounds_available:
+            try:
+                gui_sounds_value = _get_kodi_setting_value(AUDIO_GUI_SOUNDS_SETTING, 1)
+                k.set_property('fenlight.audio.gui_sounds', str(gui_sounds_value))
+                k.set_property('fenlight.audio.gui_sounds.label', _gui_sounds_label(gui_sounds_value))
+            except Exception:
+                k.set_property('fenlight.audio.gui_sounds', '1')
+                k.set_property('fenlight.audio.gui_sounds.label', 'Only when playback stopped')
+        else:
+            k.set_property('fenlight.audio.gui_sounds', '1')
+            k.set_property('fenlight.audio.gui_sounds.label', 'Unavailable')
+
 
         for setting_id, data in AUDIO_TOGGLE_SETTINGS.items():
             prop_name, label = data
@@ -601,3 +637,36 @@ def set_pvr_guide_select_action_switch_channel(params=None, silent=True):
             )
 
         return False
+    
+def set_gui_sounds(params=None):
+    try:
+        import xbmcgui
+
+        current_value = _get_kodi_setting_value(AUDIO_GUI_SOUNDS_SETTING, 1)
+
+        preselect = 1
+        try:
+            current_value_int = int(current_value)
+            for index, item in enumerate(GUI_SOUND_CHOICES):
+                if item[1] == current_value_int:
+                    preselect = index
+                    break
+        except Exception:
+            pass
+
+        labels = [item[0] for item in GUI_SOUND_CHOICES]
+        index = xbmcgui.Dialog().select('Kodi GUI Sounds', labels, preselect=preselect)
+
+        if index < 0:
+            return
+
+        label, value = GUI_SOUND_CHOICES[index]
+
+        _set_kodi_setting_value(AUDIO_GUI_SOUNDS_SETTING, value)
+        refresh_audio_properties()
+
+    except Exception as exc:
+        return k.ok_dialog(
+            heading='Kodi GUI Sounds',
+            text='Could not change Kodi GUI sounds setting:[CR][CR]%s' % str(exc)
+        )
