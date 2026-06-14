@@ -437,6 +437,31 @@
                           <property name="setting_description">Revoke authorization of your TorBox account</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=torbox.revoke_authentication)</onclick>
                       </item>
+        <!-- Trakt -->
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Trakt</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
+                          <property name="setting_label">Authenticate Trakt</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Not Authorized</property>
+                          <property name="setting_description">Run FLAM/Fen Light's existing Trakt authentication flow.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_authenticate)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
+                          <property name="setting_label">Trakt Account</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.user)]</property>
+                          <property name="setting_description">Revoke authorization for the current Trakt account.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
+                      </item>                      
         <!-- Xtream IPTV -->
                       <item>
                           <visible>Container(2000).HasFocus(5)</visible>
@@ -476,31 +501,7 @@
                           <property name="setting_description">Generate M3U and EPG from the saved Xtream details. The generator module will be connected in the next step.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.generate_iptv)</onclick>
                       </item>
-        <!-- Trakt -->
-                      <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
-                          <property name="setting_label">Trakt</property>
-                          <property name="setting_type">separator</property>
-                          <onclick>noop</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Authenticate Trakt</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">Not Authorized</property>
-                          <property name="setting_description">Run FLAM/Fen Light's existing Trakt authentication flow.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_authenticate)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Trakt Account</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.user)]</property>
-                          <property name="setting_description">Revoke authorization for the current Trakt account.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
-                      </item>
+
 <!-- GENERAL SETTINGS 10 -->
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
