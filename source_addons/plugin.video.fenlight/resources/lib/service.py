@@ -30,6 +30,27 @@ class SetAddonConstants:
 		for item in addon_items: kodi_utils.set_property(*item)
 		return kodi_utils.logger('Fen Light', 'SetAddonConstants Service Finished')
 
+
+class DebridCacheWipe:
+	def run(self):
+		kodi_utils.logger('Fen Light', 'DebridCacheWipe Service Starting')
+
+		try:
+			from caches.base_cache import database_locations
+
+			db_file = database_locations('debridcache_db')
+
+			if kodi_utils.path_exists(db_file):
+				kodi_utils.delete_file(db_file)
+				kodi_utils.logger('Fen Light', 'DebridCacheWipe Deleted: %s' % db_file)
+			else:
+				kodi_utils.logger('Fen Light', 'DebridCacheWipe Not Found: %s' % db_file)
+
+		except Exception as exc:
+			kodi_utils.logger('Fen Light', 'DebridCacheWipe Error: %s' % str(exc))
+
+		return kodi_utils.logger('Fen Light', 'DebridCacheWipe Service Finished')
+
 class DatabaseMaintenance:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'DatabaseMaintenance Service Starting')
@@ -217,6 +238,7 @@ class FenLightMonitor(Monitor):
 
 	def startServices(self):
 		SetAddonConstants().run()
+		DebridCacheWipe().run()
 		DatabaseMaintenance().run()
 		SyncSettings().run()
 		OnUpdateChanges().run()
