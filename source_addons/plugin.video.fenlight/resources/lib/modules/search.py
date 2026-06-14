@@ -145,8 +145,10 @@ def bingie_all(params):
                 pass
 
     query = unquote(params.get('query') or params.get('key_id') or '').strip()
-    handle = int(kodi_utils.sys.argv[1])
-
+    
+    
+    import sys
+    handle = int(sys.argv[1])
     if not query:
         kodi_utils.set_content(handle, 'movies')
         kodi_utils.set_category(handle, 'Search')
