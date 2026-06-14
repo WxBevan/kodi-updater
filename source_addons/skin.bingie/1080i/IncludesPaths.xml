@@ -176,7 +176,7 @@
         <value condition="VideoPlayer.Content(movies)">plugin://plugin.video.tmdb.bingie.helper/?info=crew&amp;tmdb_type=movie$INFO[Window(Home).Property(TMDbBingieHelper.Player.TMDb_ID),&amp;tmdb_id=,]$INFO[Player.Title,&amp;query=,]$INFO[VideoPlayer.Year,&amp;year=,]&amp;cacheonly=true</value>
         <value condition="VideoPlayer.Content(episodes)">plugin://plugin.video.tmdb.bingie.helper/?info=crew&amp;tmdb_type=tv$INFO[Window(Home).Property(TMDbBingieHelper.Player.TVShow.TMDb_ID),&amp;tmdb_id=,]$INFO[VideoPlayer.TVShowTitle,&amp;query=,]$INFO[VideoPlayer.Season,&amp;season=,]$INFO[VideoPlayer.Episode,&amp;episode=,]$INFO[VideoPlayer.Year,&amp;episode_year=,]&amp;cacheonly=true</value>
 	</variable>
-	
+	<!-- CHANGING CATEGORY PATHS TO FLAM  
 	<variable name="ActionAdvantureMoviesWidget">
         <value condition="!String.IsEmpty(Skin.String(ActionAdvantureMovies.path))">$INFO[Skin.String(ActionAdvantureMovies.path)]</value>
         <value>$VAR[ActionAdvantureMovies]</value>
@@ -456,7 +456,285 @@
 		<value condition="[Library.HasContent(Movies) | Library.HasContent(TVShows)]">special://skin/extras/categories/tvmysteries.xsp</value>
         <value condition="!Library.HasContent(Movies) + !Library.HasContent(TVShows)">plugin://plugin.video.tmdb.bingie.helper/?info=discover&amp;sort_by=popularity.desc&amp;tmdb_id=None&amp;tmdb_type=tv&amp;with_genres=9648&amp;with_id=True&amp;with_separator=AND&amp;without_genres=16&amp;vote_count.gte=50&amp;reload=$INFO[Window(Home).Property(TMDbBingieHelper.Widgets.Reload)]$VAR[Path_Param_Limit]</value>
     </variable>
+
+    -->
 	
+
+
+
+
+
+<!-- New Replacement Sources -->
+
+    <variable name="ActionAdvantureMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(ActionAdvantureMovies.path))">$INFO[Skin.String(ActionAdvantureMovies.path)]</value>
+        <value>$VAR[ActionAdvantureMovies]</value>
+    </variable>
+
+    <variable name="ActionAdvantureTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(ActionAdvantureTVShows.path))">$INFO[Skin.String(ActionAdvantureTVShows.path)]</value>
+        <value>$VAR[ActionAdvantureTVShows]</value>
+    </variable>
+
+    <variable name="DramaMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(DramaMovies.path))">$INFO[Skin.String(DramaMovies.path)]</value>
+        <value>$VAR[DramaMovies]</value>
+    </variable>
+
+    <variable name="DramaTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(DramaTVShows.path))">$INFO[Skin.String(DramaTVShows.path)]</value>
+        <value>$VAR[DramaTVShows]</value>
+    </variable>
+
+    <variable name="ComedyMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(ComedyMovies.path))">$INFO[Skin.String(ComedyMovies.path)]</value>
+        <value>$VAR[ComedyMovies]</value>
+    </variable>
+
+    <variable name="ComedyTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(ComedyTVShows.path))">$INFO[Skin.String(ComedyTVShows.path)]</value>
+        <value>$VAR[ComedyTVShows]</value>
+    </variable>
+
+    <variable name="HorrorMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(HorrorMovies.path))">$INFO[Skin.String(HorrorMovies.path)]</value>
+        <value>$VAR[HorrorMovies]</value>
+    </variable>
+
+    <variable name="DocumentaryMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(DocumentaryMovies.path))">$INFO[Skin.String(DocumentaryMovies.path)]</value>
+        <value>$VAR[DocumentaryMovies]</value>
+    </variable>
+
+    <variable name="DocumentaryTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(DocumentaryTVShows.path))">$INFO[Skin.String(DocumentaryTVShows.path)]</value>
+        <value>$VAR[DocumentaryTVShows]</value>
+    </variable>
+
+    <variable name="CrimeMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(CrimeMovies.path))">$INFO[Skin.String(CrimeMovies.path)]</value>
+        <value>$VAR[CrimeMovies]</value>
+    </variable>
+
+    <variable name="CrimeTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(CrimeTVShows.path))">$INFO[Skin.String(CrimeTVShows.path)]</value>
+        <value>$VAR[CrimeTVShows]</value>
+    </variable>
+
+    <variable name="FantasyMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(FantasyMovies.path))">$INFO[Skin.String(FantasyMovies.path)]</value>
+        <value>$VAR[FantasyMovies]</value>
+    </variable>
+
+    <variable name="SciFiFantasyTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(SciFiFantasyTVShows.path))">$INFO[Skin.String(SciFiFantasyTVShows.path)]</value>
+        <value>$VAR[SciFiFantasyTVShows]</value>
+    </variable>
+
+    <variable name="MusicMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(MusicMovies.path))">$INFO[Skin.String(MusicMovies.path)]</value>
+        <value>$VAR[MusicMovies]</value>
+    </variable>
+
+    <variable name="RomanceMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(RomanceMovies.path))">$INFO[Skin.String(RomanceMovies.path)]</value>
+        <value>$VAR[RomanceMovies]</value>
+    </variable>
+
+    <variable name="SciFiMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(SciFiMovies.path))">$INFO[Skin.String(SciFiMovies.path)]</value>
+        <value>$VAR[SciFiMovies]</value>
+    </variable>
+
+    <variable name="ThrillerMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(ThrillerMovies.path))">$INFO[Skin.String(ThrillerMovies.path)]</value>
+        <value>$VAR[ThrillerMovies]</value>
+    </variable>
+
+    <variable name="WesternMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(WesternMovies.path))">$INFO[Skin.String(WesternMovies.path)]</value>
+        <value>$VAR[WesternMovies]</value>
+    </variable>
+
+    <variable name="WesternTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(WesternTVShows.path))">$INFO[Skin.String(WesternTVShows.path)]</value>
+        <value>$VAR[WesternTVShows]</value>
+    </variable>
+
+    <variable name="AnimationMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(AnimationMovies.path))">$INFO[Skin.String(AnimationMovies.path)]</value>
+        <value>$VAR[AnimationMovies]</value>
+    </variable>
+
+    <variable name="AnimationTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(AnimationTVShows.path))">$INFO[Skin.String(AnimationTVShows.path)]</value>
+        <value>$VAR[AnimationTVShows]</value>
+    </variable>
+
+    <variable name="AnimeMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(AnimeMovies.path))">$INFO[Skin.String(AnimeMovies.path)]</value>
+        <value>$VAR[AnimeMovies]</value>
+    </variable>
+
+    <variable name="FamilyMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(FamilyMovies.path))">$INFO[Skin.String(FamilyMovies.path)]</value>
+        <value>$VAR[FamilyMovies]</value>
+    </variable>
+
+    <variable name="FamilyTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(FamilyTVShows.path))">$INFO[Skin.String(FamilyTVShows.path)]</value>
+        <value>$VAR[FamilyTVShows]</value>
+    </variable>
+
+    <variable name="HistoryWarMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(HistoryWarMovies.path))">$INFO[Skin.String(HistoryWarMovies.path)]</value>
+        <value>$VAR[HistoryWarMovies]</value>
+    </variable>
+
+    <variable name="WarPoliticsTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(WarPoliticsTVShows.path))">$INFO[Skin.String(WarPoliticsTVShows.path)]</value>
+        <value>$VAR[WarPoliticsTVShows]</value>
+    </variable>
+
+    <variable name="MysteryMoviesWidget">
+        <value condition="!String.IsEmpty(Skin.String(MysteryMovies.path))">$INFO[Skin.String(MysteryMovies.path)]</value>
+        <value>$VAR[MysteryMovies]</value>
+    </variable>
+
+    <variable name="MysteryTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(MysteryTVShows.path))">$INFO[Skin.String(MysteryTVShows.path)]</value>
+        <value>$VAR[MysteryTVShows]</value>
+    </variable>
+
+
+<!-- Actual Sources -->
+    <variable name="ActionAdvantureMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=28%7C12&amp;name=Action%20%26%20Adventure</value>
+    </variable>
+
+    <variable name="DramaMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=18&amp;name=Drama%20Movies</value>
+    </variable>
+
+    <variable name="ComedyMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=35&amp;name=Comedy%20Movies</value>
+    </variable>
+
+    <variable name="FamilyMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=10751&amp;name=Family%20Movies</value>
+    </variable>
+
+    <variable name="HorrorMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=27&amp;name=Horror%20Movies</value>
+    </variable>
+
+    <variable name="DocumentaryMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=99&amp;name=Documentary%20Movies</value>
+    </variable>
+
+    <variable name="AnimeMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_keyword_results_direct&amp;key_id=210024&amp;name=Anime%20Movies</value>
+    </variable>
+
+    <variable name="CrimeMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=80&amp;name=Crime%20Movies</value>
+    </variable>
+
+    <variable name="FantasyMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=14&amp;name=Fantasy%20Movies</value>
+    </variable>
+
+    <variable name="HistoryWarMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=36%7C10752&amp;name=History%20%26%20War%20Movies</value>
+    </variable>
+
+    <variable name="AnimationMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=16&amp;name=Animation%20Movies</value>
+    </variable>
+
+    <variable name="MusicMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=10402&amp;name=Music%20Movies</value>
+    </variable>
+
+    <variable name="RomanceMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=10749&amp;name=Romance%20Movies</value>
+    </variable>
+
+    <variable name="SciFiMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=878&amp;name=Sci-Fi%20Movies</value>
+    </variable>
+
+    <variable name="MysteryMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=9648&amp;name=Mystery%20Movies</value>
+    </variable>
+
+    <variable name="ThrillerMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=53&amp;name=Thriller%20Movies</value>
+    </variable>
+
+    <variable name="WesternMovies">
+        <value>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=tmdb_movies_genres&amp;key_id=37&amp;name=Western%20Movies</value>
+    </variable>
+
+    <variable name="ActionAdvantureTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=10759&amp;name=Action%20%26%20Adventure%20TV%20Shows</value>
+    </variable>
+
+    <variable name="DramaTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=18&amp;name=Drama%20TV%20Shows</value>
+    </variable>
+
+    <variable name="ComedyTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=35&amp;name=Comedy%20TV%20Shows</value>
+    </variable>
+
+    <variable name="FamilyTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=10751%7C10762&amp;name=Family%20TV%20Shows</value>
+    </variable>
+
+    <variable name="DocumentaryTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=99&amp;name=Documentary%20TV%20Shows</value>
+    </variable>
+
+<!-- Added this, should technically have same style with condition stuff above, but shouldnt be an issue-->
+    <variable name="AnimeTVShowsWidget">
+        <value condition="!String.IsEmpty(Skin.String(AnimeTVShows.path))">$INFO[Skin.String(AnimeTVShows.path)]</value>
+        <value>$VAR[AnimeTVShows]</value>
+    </variable>
+
+    <variable name="AnimeTVShows">
+       <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_anime_popular&amp;iconImage=anime&amp;name=Anime%20TV%20Shows</value>
+    </variable>
+
+    <variable name="CrimeTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=80&amp;name=Crime%20TV%20Shows</value>
+    </variable>
+
+    <variable name="SciFiFantasyTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=10765&amp;name=Sci-Fi%20%26%20Fantasy%20TV%20Shows</value>
+    </variable>
+
+    <variable name="WarPoliticsTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=10768&amp;name=War%20%26%20Politics%20TV%20Shows</value>
+    </variable>
+
+    <variable name="AnimationTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=16&amp;name=Animation%20TV%20Shows</value>
+    </variable>
+
+    <variable name="MysteryTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=9648&amp;name=Mystery%20TV%20Shows</value>
+    </variable>
+
+    <variable name="WesternTVShows">
+        <value>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=tmdb_tv_genres&amp;key_id=37&amp;name=Western%20TV%20Shows</value>
+    </variable>
+
+
+<!-- Done -->
+
+
+
 	<variable name="DefSpotlightWidgetContent">
 		<value condition="Library.HasContent(Movies) | Library.HasContent(TVShows)">plugin://script.bingie.widgets/?action=random&amp;mediatype=media&amp;limit=5</value>
         <value condition="!Library.HasContent(Movies) + !Library.HasContent(TVShows)">plugin://plugin.video.tmdb.bingie.helper/?info=random_popular&amp;tmdb_type=both&amp;widget=true&amp;reload=$INFO[Window(Home).Property(TMDbBingieHelper.Widgets.Reload)]</value>

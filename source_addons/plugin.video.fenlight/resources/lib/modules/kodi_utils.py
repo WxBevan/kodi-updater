@@ -65,8 +65,31 @@ def kodi_monitor():
 def kodi_player():
 	return xbmc.Player()
 
+
+## Start of FLAM patch for keyboard in accounts menu from search menu.
+
+
+class _FLAMDialog:
+	def __init__(self):
+		self._dialog = xbmcgui.Dialog()
+
+	def input(self, *args, **kwargs):
+		set_property('FenLightForceDefaultKeyboard', 'true')
+		try:
+			return self._dialog.input(*args, **kwargs)
+		finally:
+			clear_property('FenLightForceDefaultKeyboard')
+
+	def __getattr__(self, name):
+		return getattr(self._dialog, name)
+
+
 def kodi_dialog():
-	return xbmcgui.Dialog()
+	return _FLAMDialog()
+
+#def kodi_dialog():
+#	return xbmcgui.Dialog()
+## END OF Patch
 
 def addon_info(info):
 	return xbmcaddon.Addon('plugin.video.fenlight').getAddonInfo(info)

@@ -2194,7 +2194,7 @@ msgid "Trailers settings"
 msgstr "Configuración de tráilers"
 
 msgctxt "#31534"
-msgid "My list"
+msgid "My Watchlist"
 msgstr "Mi lista"
 
 msgctxt "#31535"

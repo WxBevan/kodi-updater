@@ -1,11 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- BINGIE -->
 <shortcuts>
+
     <shortcut>
-        <label>$LOCALIZE[31534]</label>
+        <label>Movies Watchlist</label>
         <label2 />
         <icon />
         <thumb />
-        <action>$VAR[Path_MyList]</action>
-    </shortcut>   
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=trakt_watchlist&amp;iconImage=trakt&amp;name=Movies%20Watchlist</action>
+    </shortcut>
+
+    <shortcut>
+        <label>TV Shows Watchlist</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=trakt_watchlist&amp;iconImage=trakt&amp;name=TV%20Shows%20Watchlist</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Recently Watched Movies</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_movie_list&amp;action=recent_watched_movies&amp;iconImage=watched&amp;name=Recently%20Watched%20Movies</action>
+    </shortcut>
+
+    <shortcut>
+        <label>Recently Watched TV Shows</label>
+        <label2 />
+        <icon />
+        <thumb />
+        <action>plugin://plugin.video.fenlight/?mode=build_tvshow_list&amp;action=recent_watched_tvshows&amp;iconImage=watched&amp;name=Recently%20Watched%20TV%20Shows</action>
+    </shortcut>
+
 </shortcuts>

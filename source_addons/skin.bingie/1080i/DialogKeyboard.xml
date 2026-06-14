@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- BINGIE -->
+<!-- BINGIE We added the flam stuff as it was using the netflix style keyboard when you open accounts menu from the search menu. Also edited flam kodi_utils.py-->
 <window>
     <defaultcontrol always="true">300</defaultcontrol>
     <controls>
-        <include condition="Window.IsActive(1109)">BingieSearchMiniKeyboard</include>
-        <include condition="!Window.IsActive(1109)">DefaultKeyboard</include>
+        <include condition="Window.IsActive(1109) + !String.IsEqual(Window(Home).Property(FenLightForceDefaultKeyboard),true)">BingieSearchMiniKeyboard</include>
+        <include condition="!Window.IsActive(1109) | String.IsEqual(Window(Home).Property(FenLightForceDefaultKeyboard),true)">DefaultKeyboard</include>
     </controls>
 </window>

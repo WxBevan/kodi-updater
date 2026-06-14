@@ -262,3 +262,318 @@ def open_live_tv(params=None):
         )
 
     return k.execute_builtin('ActivateWindow(TVGuide)')
+
+
+# =========================
+# Kodi Audio Settings
+# =========================
+
+AUDIO_DEVICE_SETTING = 'audiooutput.audiodevice'
+AUDIO_PASSTHROUGH_DEVICE_SETTING = 'audiooutput.passthroughdevice'
+
+AUDIO_TOGGLE_SETTINGS = {
+    'audiooutput.passthrough': ('audio.passthrough', 'Allow Passthrough'),
+    'audiooutput.ac3passthrough': ('audio.ac3', 'Dolby Digital / AC3'),
+    'audiooutput.eac3passthrough': ('audio.eac3', 'Dolby Digital Plus / E-AC3'),
+    'audiooutput.dtspassthrough': ('audio.dts', 'DTS'),
+    'audiooutput.truehdpassthrough': ('audio.truehd', 'TrueHD / Atmos'),
+    'audiooutput.dtshdpassthrough': ('audio.dtshd', 'DTS-HD'),
+}
+
+
+def _jsonrpc(method, params=None):
+    import json
+    import xbmc
+
+    request = {
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': method
+    }
+
+    if params is not None:
+        request['params'] = params
+
+    response = xbmc.executeJSONRPC(json.dumps(request))
+    data = json.loads(response or '{}')
+
+    if data.get('error'):
+        raise Exception('%s failed: %s' % (method, data.get('error')))
+
+    return data.get('result')
+
+
+def _get_audio_settings_details():
+    """
+    Read Kodi's audio settings metadata so we can discover available devices
+    and only show codec toggles that exist on this platform.
+    """
+    try:
+        result = _jsonrpc('Settings.GetSettings', {
+            'level': 'expert',
+            'filter': {
+                'section': 'system',
+                'category': 'audio'
+            }
+        })
+    except Exception:
+        result = _jsonrpc('Settings.GetSettings', {'level': 'expert'})
+
+    settings = result.get('settings', []) if isinstance(result, dict) else []
+    return {item.get('id'): item for item in settings if item.get('id')}
+
+
+def _get_kodi_setting_value(setting_id, default=None):
+    result = _jsonrpc('Settings.GetSettingValue', {'setting': setting_id})
+    if isinstance(result, dict):
+        return result.get('value', default)
+    return default
+
+
+def _set_kodi_setting_value(setting_id, value):
+    return _jsonrpc('Settings.SetSettingValue', {
+        'setting': setting_id,
+        'value': value
+    })
+
+
+def _setting_available(setting_id, details=None):
+    if details and setting_id in details:
+        return True
+
+    try:
+        _get_kodi_setting_value(setting_id)
+        return True
+    except Exception:
+        return False
+
+
+def _setting_options(setting_id):
+    details = _get_audio_settings_details()
+    item = details.get(setting_id, {})
+    options = item.get('options') or item.get('values') or []
+
+    parsed = []
+
+    for option in options:
+        if isinstance(option, dict):
+            value = option.get('value')
+            label = option.get('label') or option.get('name') or str(value)
+        else:
+            value = option
+            label = str(option)
+
+        if value not in (None, ''):
+            parsed.append((str(label), value))
+
+    return parsed
+
+
+def _label_for_setting_value(setting_id, value):
+    for label, option_value in _setting_options(setting_id):
+        if str(option_value) == str(value):
+            return label
+
+    if value in ('', None):
+        return 'Not Set'
+
+    return str(value)
+
+
+def refresh_audio_properties(params=None):
+    """
+    Populate window properties used by accounts_manager.xml.
+    """
+    try:
+        details = _get_audio_settings_details()
+
+        current_device = _get_kodi_setting_value(AUDIO_DEVICE_SETTING, '')
+        device_label = _label_for_setting_value(AUDIO_DEVICE_SETTING, current_device)
+
+        k.set_property('fenlight.audio.output_device', str(current_device or ''))
+        k.set_property('fenlight.audio.output_device.label', device_label or 'Not Set')
+
+        for setting_id, data in AUDIO_TOGGLE_SETTINGS.items():
+            prop_name, label = data
+            available = _setting_available(setting_id, details)
+            k.set_property('fenlight.%s.available' % prop_name, 'true' if available else 'false')
+
+            if available:
+                try:
+                    value = _get_kodi_setting_value(setting_id, False)
+                    k.set_property('fenlight.%s' % prop_name, str(bool(value)).lower())
+                except Exception:
+                    k.set_property('fenlight.%s' % prop_name, 'false')
+            else:
+                k.set_property('fenlight.%s' % prop_name, 'false')
+
+    except Exception as exc:
+        k.set_property('fenlight.audio.output_device.label', 'Unavailable')
+        k.notification('Could not read Kodi audio settings: %s' % str(exc), 4000)
+
+
+
+def choose_audio_output(params=None):
+    """
+    Let the user pick from Kodi's actual available audio output devices.
+    Sets both normal output and passthrough output to the selected device.
+    """
+    try:
+        import xbmcgui
+
+        options = _setting_options(AUDIO_DEVICE_SETTING)
+        if not options:
+            return k.ok_dialog(
+                heading='Audio Output',
+                text='Kodi did not return any audio output devices for this system.'
+            )
+
+        current_value = _get_kodi_setting_value(AUDIO_DEVICE_SETTING, '')
+        labels = [item[0] for item in options]
+
+        preselect = 0
+        for index, item in enumerate(options):
+            if str(item[1]) == str(current_value):
+                preselect = index
+                break
+
+        dialog = xbmcgui.Dialog()
+        index = dialog.select('Audio Output Device', labels, preselect=preselect)
+
+        if index < 0:
+            return
+
+        label, value = options[index]
+
+        failed = []
+
+        try:
+            _set_kodi_setting_value(AUDIO_DEVICE_SETTING, value)
+        except Exception as exc:
+            failed.append('Output device: %s' % str(exc))
+
+        try:
+            _set_kodi_setting_value(AUDIO_PASSTHROUGH_DEVICE_SETTING, value)
+        except Exception as exc:
+            failed.append('Passthrough device: %s' % str(exc))
+
+        # If a user is choosing an audio device from this menu, passthrough is
+        # usually expected for AVR/soundbar setups, so enable it automatically.
+        try:
+            _set_kodi_setting_value('audiooutput.passthrough', True)
+        except Exception:
+            pass
+
+        refresh_audio_properties()
+
+        if failed:
+            return k.ok_dialog(
+                heading='Audio Output',
+                text='Audio device selected, but some settings could not be updated:[CR][CR]%s' % '[CR]'.join(failed)
+            )
+
+        return k.notification('Audio output set to %s' % label, 3000)
+
+    except Exception as exc:
+        return k.ok_dialog(
+            heading='Audio Output',
+            text='Could not change audio output:[CR][CR]%s' % str(exc)
+        )
+
+
+def toggle_audio_setting(params):
+    setting_id = params.get('setting_id')
+
+    if setting_id not in AUDIO_TOGGLE_SETTINGS:
+        return k.ok_dialog(
+            heading='Audio Settings',
+            text='Invalid audio setting requested.'
+        )
+
+    try:
+        current_value = bool(_get_kodi_setting_value(setting_id, False))
+        new_value = not current_value
+
+        # If enabling a codec format, make sure global passthrough is also on.
+        if setting_id != 'audiooutput.passthrough' and new_value:
+            try:
+                _set_kodi_setting_value('audiooutput.passthrough', True)
+            except Exception:
+                pass
+
+        _set_kodi_setting_value(setting_id, new_value)
+        refresh_audio_properties()
+
+        label = AUDIO_TOGGLE_SETTINGS[setting_id][1]
+        k.notification('%s %s' % (label, 'enabled' if new_value else 'disabled'), 3000)
+
+    except Exception as exc:
+        return k.ok_dialog(
+            heading='Audio Settings',
+            text='Could not change audio setting:[CR][CR]%s' % str(exc)
+        )
+    
+
+## Set size limits function  ##
+
+def set_size_limits(params=None):
+    try:
+        import xbmcgui
+
+        options = [
+            ('Recommended', 'Movies 30000 MB / TV 15000 MB', '30000', '15000', '2'),
+            ('High', 'Movies 70000 MB / TV 25000 MB', '70000', '25000', '2'),
+            ('Lower', 'Movies 20000 MB / TV 10000 MB', '20000', '10000', '2'),
+            ('Custom', 'Enter custom limits', None, None, '2'),
+        ]
+
+        labels = ['%s - %s' % (item[0], item[1]) for item in options]
+        index = xbmcgui.Dialog().select('Size Limits', labels)
+
+        if index < 0:
+            return
+
+        name, label, movie_size, episode_size, filter_method = options[index]
+
+        if name == 'Custom':
+            movie_size = k.kodi_dialog().input('Movie max size in MB', defaultt='30000')
+            if not movie_size:
+                return
+
+            episode_size = k.kodi_dialog().input('TV episode max size in MB', defaultt='15000')
+            if not episode_size:
+                return
+
+            try:
+                movie_size = str(int(movie_size))
+                episode_size = str(int(episode_size))
+            except Exception:
+                return k.ok_dialog(
+                    heading='Size Limits',
+                    text='Please enter numbers only, for example 30000 and 15000.'
+                )
+
+            label = 'Movies %s MB / TV %s MB' % (movie_size, episode_size)
+
+        if filter_method == '0':
+            set_setting('results.filter_size_method', '0')
+            set_setting('simple.size_limits', 'Off')
+            k.set_property('fenlight.simple.size_limits', 'Off')
+            return k.notification('Size filtering disabled', 3000)
+
+        set_setting('results.filter_size_method', '2')
+        set_setting('results.movie_size_min', '0')
+        set_setting('results.movie_size_max', movie_size)
+        set_setting('results.episode_size_min', '0')
+        set_setting('results.episode_size_max', episode_size)
+
+        set_setting('simple.size_limits', label)
+        k.set_property('fenlight.simple.size_limits', label)
+
+        return k.notification('Size limits set: %s' % label, 3000)
+
+    except Exception as exc:
+        return k.ok_dialog(
+            heading='Size Limits',
+            text='Could not change size limits:[CR][CR]%s' % str(exc)
+        )

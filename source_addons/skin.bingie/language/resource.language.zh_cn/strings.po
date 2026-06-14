@@ -2185,7 +2185,7 @@ msgid "Trailers settings"
 msgstr "预告片设置"
 
 msgctxt "#31534"
-msgid "My list"
+msgid "My Watchlist"
 msgstr "我的列表"
 
 msgctxt "#31535"

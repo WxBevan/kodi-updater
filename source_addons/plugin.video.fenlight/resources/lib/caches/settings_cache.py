@@ -338,6 +338,9 @@ def default_settings():
 #==================== Streamlined FLAM Settings
 {'setting_id': 'simple.max_resolution', 'setting_type': 'action', 'setting_default': '4K', 'settings_options': {'4K': '4K', '1080p': '1080p', '720p': '720p', 'SD': 'SD'}},
 
+{'setting_id': 'simple.size_limits', 'setting_type': 'string', 'setting_default': 'Movies 30000 MB / TV 15000 MB'},
+
+
 #=====================================================================================#
 #====================================IPTV ACCOUNTS====================================#
 #=====================================================================================#
@@ -451,10 +454,10 @@ def default_settings():
 {'setting_id': 'results.ignore_filter', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Off', '1': 'Auto', '2': 'Prompt'}},
 #==================== Sorting and Filtering
 {'setting_id': 'results.sort_order_display', 'setting_type': 'string', 'setting_default': 'Quality, Size, Provider'},
-{'setting_id': 'results.filter_size_method', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Off', '1': 'Use Line Speed', '2': 'Use Size'}},
+{'setting_id': 'results.filter_size_method', 'setting_type': 'action', 'setting_default': '2', 'settings_options': {'0': 'Off', '1': 'Use Line Speed', '2': 'Use Size'}},
 {'setting_id': 'results.line_speed', 'setting_type': 'action', 'setting_default': '25', 'min_value': '1'},
-{'setting_id': 'results.movie_size_max', 'setting_type': 'action', 'setting_default': '10000', 'min_value': '1'},
-{'setting_id': 'results.episode_size_max', 'setting_type': 'action', 'setting_default': '3000', 'min_value': '1'},
+{'setting_id': 'results.movie_size_max', 'setting_type': 'action', 'setting_default': '30000', 'min_value': '1'},
+{'setting_id': 'results.episode_size_max', 'setting_type': 'action', 'setting_default': '15000', 'min_value': '1'},
 {'setting_id': 'results.movie_size_min', 'setting_type': 'action', 'setting_default': '0', 'min_value': '0'},
 {'setting_id': 'results.episode_size_min', 'setting_type': 'action', 'setting_default': '0', 'min_value': '0'},
 {'setting_id': 'results.size_unknown', 'setting_type': 'boolean', 'setting_default': 'true'},

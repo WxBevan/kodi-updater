@@ -27,8 +27,8 @@
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(AnimateDiscArt)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(GuideShowInfo)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(HideOSDDisc)</onload>
-	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(TVGuideChannelLogo)</onload>
-	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(TVGuideChannelNumber)</onload>
+    <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.Reset(TVGuideChannelLogo)</onload>
+    <onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(TVGuideChannelNumber)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(WatchedIndicator.Watched)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(WatchedIndicator.Progress)</onload>
 	<onload condition="!Skin.HasSetting(HomeMenuDefaults46)">Skin.SetBool(WatchedIndicator.Episodes)</onload>

@@ -134,7 +134,7 @@
                     <rulerunit>6</rulerunit>
                     <onleft>9000</onleft>
                     <scrolltime tween="quadratic">300</scrolltime>
-                    <onback>9000</onback>
+                    <onback>ActivateWindow(Home)</onback>
                     <include condition="!Skin.HasSetting(UseAltEpgProgress)">EpgProgressIndicatorNormal</include>
                     <include condition="Skin.HasSetting(UseAltEpgProgress)">EpgProgressIndicatorAlt</include>
                     <onleft>31</onleft>

@@ -11,11 +11,11 @@
     </shortcut>
 
     <shortcut>
-        <label>TV Shows Continue Watching</label>
+        <label>Next Episodes</label>
         <label2 />
         <icon />
         <thumb />
-        <action>plugin://plugin.video.fenlight/?mode=build_in_progress_episode&amp;iconImage=player&amp;name=TV%20Shows%20Continue%20Watching</action>
+        <action>plugin://plugin.video.fenlight/?mode=build_next_episode&amp;iconImage=next_episodes&amp;name=Next%20Episodes</action>
     </shortcut>
 
     <shortcut>

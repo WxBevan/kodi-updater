@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <window>
     <onload>SetFocus(2000,0,absolute)</onload>
+    <onload>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.refresh_audio_properties)</onload>
     <controls>
         <!-- Background -->
         <control type="image">
@@ -533,6 +534,88 @@
                           <property name="setting_description">Toggle autoplay for both Movies and TV Shows.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_autoplay)</onclick>
                       </item>
+
+
+<!-- AUDIO SETTINGS 10 -->
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Audio</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Output Device</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.output_device.label)]</property>
+                          <property name="setting_description">Choose from Kodi's available audio devices. This sets both the normal output device and passthrough output device.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.choose_audio_output)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.passthrough.available),true)</visible>
+                          <property name="setting_label">Allow Passthrough</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.passthrough)]</property>
+                          <property name="setting_description">Enable or disable Kodi audio passthrough.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.passthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.ac3.available),true)</visible>
+                          <property name="setting_label">Dolby Digital / AC3</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.ac3)]</property>
+                          <property name="setting_description">Toggle Dolby Digital AC3 passthrough support.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.ac3passthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.eac3.available),true)</visible>
+                          <property name="setting_label">Dolby Digital Plus / E-AC3</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.eac3)]</property>
+                          <property name="setting_description">Toggle Dolby Digital Plus / E-AC3 passthrough support. Streaming Atmos commonly uses this format.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.eac3passthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.dts.available),true)</visible>
+                          <property name="setting_label">DTS</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.dts)]</property>
+                          <property name="setting_description">Toggle DTS passthrough support.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.dtspassthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.truehd.available),true)</visible>
+                          <property name="setting_label">TrueHD / Atmos</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.truehd)]</property>
+                          <property name="setting_description">Toggle Dolby TrueHD passthrough support. Lossless Atmos is carried through TrueHD.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.truehdpassthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.dtshd.available),true)</visible>
+                          <property name="setting_label">DTS-HD</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.dtshd)]</property>
+                          <property name="setting_description">Toggle DTS-HD passthrough support.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.dtshdpassthrough)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Refresh Audio Settings</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Refresh</property>
+                          <property name="setting_description">Refresh the displayed Kodi audio settings after changing devices or system audio configuration.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.refresh_audio_properties)</onclick>
+                      </item>
+
+
+
 
 <!-- TUTORIAL 15 -->
                       <item>
