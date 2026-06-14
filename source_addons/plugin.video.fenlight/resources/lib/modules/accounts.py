@@ -208,6 +208,10 @@ def generate_iptv(params=None):
                 final_text += '[CR][CR]Report:[CR]%s' % report
 
         else:
+            set_pvr_guide_select_action_switch_channel()
+
+
+            
             iptv_simple_settings = result.get('iptv_simple_settings', '')
             pvr_reload = result.get('pvr_reload', {})
             pvr_reload_text = pvr_reload.get('message', 'PVR reload status unknown.') if isinstance(pvr_reload, dict) else str(pvr_reload)
@@ -564,3 +568,37 @@ def set_size_limits(params=None):
             heading='Size Limits',
             text='Could not change size limits:[CR][CR]%s' % str(exc)
         )
+
+
+## To set default live tv action to switch to channel
+# 
+# 
+def _set_kodi_setting_value(setting_id, value):
+    return _jsonrpc('Settings.SetSettingValue', {
+        'setting': setting_id,
+        'value': value
+    })        
+
+def set_pvr_guide_select_action_switch_channel(params=None, silent=True):
+    """
+    Force Kodi's PVR guide default select action to:
+    Switch to channel.
+
+    Kodi setting:
+    Settings -> PVR & Live TV -> Guide -> Default select action
+    """
+    try:
+        _set_kodi_setting_value('pvrguide.selectaction', 1)
+        if not silent:
+            return k.ok_dialog(
+                heading='Live TV',
+                text='TV Guide select action has been set to Switch to Channel.'
+            )
+        return True
+    except Exception as exc:
+        if not silent:
+            return k.ok_dialog(
+                heading='Live TV',
+                text='Could not set TV Guide select action:[CR][CR]%s' % str(exc)
+            )
+        return False

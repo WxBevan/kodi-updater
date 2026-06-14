@@ -1717,7 +1717,6 @@ fix for fanarttv landscape art overwriting TMDb landscape art
         <import addon="plugin.program.autowidget" version="0.0.0" />
         <import addon="plugin.video.fenlight" version="0.0.0" />
 
-        <import addon="service.autoexec" version="0.0.0" />
         <import addon="service.autostop" version="0.0.0" />
 
         <import addon="skin.bingie" version="0.0.0" />
@@ -1733,20 +1732,6 @@ fix for fanarttv landscape art overwriting TMDb landscape art
         <license>GPL-2.0-or-later</license>
         <news>Removed repository dependencies and cleaned setup requirements.</news>
     </extension>
-</addon>
-
-<addon id="service.autoexec" name="Autoexec Service" version="1.0.0" provider-name="your username">
-	<requires>
-		<import addon="xbmc.python" version="3.0.0" />
-	</requires>
-	<extension point="xbmc.service" library="autoexec.py">
-	</extension>
-	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Automatically run python code when Kodi starts.</summary>
-		<description lang="en_GB">The Autoexec Service will automatically be run on Kodi startup.</description>
-		<platform>all</platform>
-		<license>GNU GENERAL PUBLIC LICENSE Version 2</license>
-	</extension>
 </addon>
 
 <addon id="service.autostop" name="Autostop" version="1.0.6" provider-name="jbinkley60">

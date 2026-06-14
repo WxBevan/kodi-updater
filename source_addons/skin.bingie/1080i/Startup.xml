@@ -2,15 +2,21 @@
 <!-- BINGIE -->
 <window>
     <defaultcontrol always="true">10</defaultcontrol>
+
     <include>DefaultSkinSettings</include>
+
     <onload>SetProperty(Random,$INFO[System.Time(ss)],Home)</onload>
-    <!-- start up mask - preload -->
-    <onload condition="String.IsEmpty(Skin.String(SplashScreen))">SetProperty(StartupMask,1,home)</onload>
-    <onload condition="String.IsEmpty(Skin.String(SplashScreen))">ReplaceWindow($VAR[StartUpWindow])</onload>
+
+    <!-- Only use the startup mask if startup animations are enabled -->
+    <onload condition="!String.IsEqual(Skin.String(splash_screen),none)">SetProperty(StartupMask,1,Home)</onload>
+
+    <!-- Always leave Startup.xml, otherwise Kodi can stay on a blank startup window -->
+    <onload>ReplaceWindow($VAR[StartUpWindow])</onload>
+
     <onunload condition="Player.HasVideo">PlayerControl(Stop)</onunload>
-	
-	<!-- Start TMDbH service -->
+
+    <!-- Start TMDb Bingie Helper service hooks -->
     <onload>Skin.SetBool(TMDbBingieHelper.Service)</onload>
-	<onload>Skin.SetBool(TMDbBingieHelper.DirectCallAuto)</onload>
-	<onload>Skin.SetString(TMDbBingieHelper.MonitorContainer,17195)</onload>
+    <onload>Skin.SetBool(TMDbBingieHelper.DirectCallAuto)</onload>
+    <onload>Skin.SetString(TMDbBingieHelper.MonitorContainer,17195)</onload>
 </window>

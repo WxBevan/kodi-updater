@@ -10,6 +10,8 @@
 
     <include name="startupskinsettingsvalues">
         <onload>SetProperty(startupDone,loaded,Home)</onload>
+        <onload>Skin.SetBool(BingieFirstStartupDone)</onload>
+        <onload>Skin.SetBool(BingieSecondStartupDone)</onload>
     </include>
   
   <!-- various default settings  -->

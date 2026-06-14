@@ -27,7 +27,6 @@
         <import addon="plugin.program.autowidget" version="0.0.0"/>
         <import addon="plugin.video.fenlight" version="0.0.0"/>
 
-        <import addon="service.autoexec" version="0.0.0"/>
         <import addon="service.autostop" version="0.0.0"/>
 
         <import addon="skin.bingie" version="0.0.0"/>
