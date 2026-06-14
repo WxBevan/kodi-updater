@@ -253,6 +253,7 @@ def generate_iptv(params=None):
     return k.ok_dialog(heading=final_heading, text=final_text)
 
 
+
 def open_live_tv(params=None):
     iptv_m3u = 'special://userdata/addon_data/plugin.video.fenlight/iptv/IPTV.m3u'
 
@@ -261,6 +262,8 @@ def open_live_tv(params=None):
             heading='Live TV',
             text='Please enter Xtream details in Account Settings and generate Live TV.'
         )
+
+    set_pvr_guide_select_action_switch_channel()
 
     return k.execute_builtin('ActivateWindow(TVGuide)')
 
