@@ -207,11 +207,7 @@ def generate_iptv(params=None):
             if report:
                 final_text += '[CR][CR]Report:[CR]%s' % report
 
-        else:
-            set_pvr_guide_select_action_switch_channel()
-
-
-            
+        else:            
             iptv_simple_settings = result.get('iptv_simple_settings', '')
             pvr_reload = result.get('pvr_reload', {})
             pvr_reload_text = pvr_reload.get('message', 'PVR reload status unknown.') if isinstance(pvr_reload, dict) else str(pvr_reload)
@@ -262,8 +258,6 @@ def open_live_tv(params=None):
             heading='Live TV',
             text='Please enter Xtream details in Account Settings and generate Live TV.'
         )
-
-    set_pvr_guide_select_action_switch_channel()
 
     return k.execute_builtin('ActivateWindow(TVGuide)')
 
@@ -573,35 +567,37 @@ def set_size_limits(params=None):
         )
 
 
-## To set default live tv action to switch to channel
-# 
-# 
-def _set_kodi_setting_value(setting_id, value):
-    return _jsonrpc('Settings.SetSettingValue', {
-        'setting': setting_id,
-        'value': value
-    })        
+## Set Kodi Live TV Guide default select action to Switch to Channel.
+## Kodi setting:
+## Settings -> PVR & Live TV -> Guide -> Default select action
 
 def set_pvr_guide_select_action_switch_channel(params=None, silent=True):
-    """
-    Force Kodi's PVR guide default select action to:
-    Switch to channel.
-
-    Kodi setting:
-    Settings -> PVR & Live TV -> Guide -> Default select action
-    """
     try:
-        _set_kodi_setting_value('pvrguide.selectaction', 1)
-        if not silent:
+        show_dialog = silent is False
+
+        if isinstance(params, dict):
+            show_dialog = str(params.get('silent', '')).lower() == 'false' or str(params.get('show_dialog', '')).lower() == 'true'
+
+        _set_kodi_setting_value('epg.selectaction', 1)
+
+        current_value = _get_kodi_setting_value('epg.selectaction', None)
+        k.logger('Fen Light', 'Kodi EPG select action set to: %s' % str(current_value))
+
+        if show_dialog:
             return k.ok_dialog(
                 heading='Live TV',
-                text='TV Guide select action has been set to Switch to Channel.'
+                text='TV Guide select action has been set to Switch to Channel.[CR][CR]Current value: %s' % str(current_value)
             )
-        return True
+
+        return str(current_value) == '1'
+
     except Exception as exc:
-        if not silent:
+        k.logger('Fen Light', 'Could not set Kodi EPG select action: %s' % str(exc))
+
+        if silent is False:
             return k.ok_dialog(
                 heading='Live TV',
                 text='Could not set TV Guide select action:[CR][CR]%s' % str(exc)
             )
+
         return False

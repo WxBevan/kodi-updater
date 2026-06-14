@@ -51,6 +51,34 @@ class DebridCacheWipe:
 
 		return kodi_utils.logger('Fen Light', 'DebridCacheWipe Service Finished')
 
+
+class KodiLiveTVDefaults:
+	def run(self):
+		kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Service Starting')
+
+		try:
+			import json
+			import xbmc
+
+			request = {
+				'jsonrpc': '2.0',
+				'id': 1,
+				'method': 'Settings.SetSettingValue',
+				'params': {
+					'setting': 'epg.selectaction',
+					'value': 1
+				}
+			}
+
+			response = xbmc.executeJSONRPC(json.dumps(request))
+			kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults EPG select action response: %s' % response)
+
+		except Exception as exc:
+			kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Error: %s' % str(exc))
+
+		return kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Service Finished')
+
+
 class DatabaseMaintenance:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'DatabaseMaintenance Service Starting')
@@ -238,6 +266,7 @@ class FenLightMonitor(Monitor):
 
 	def startServices(self):
 		SetAddonConstants().run()
+		KodiLiveTVDefaults().run()
 		DebridCacheWipe().run()
 		DatabaseMaintenance().run()
 		SyncSettings().run()

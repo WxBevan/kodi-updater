@@ -1,10 +1,75 @@
-Welcome to FLAM
+ACCOUNTS SETUP TUTORIAL
 
-1. Open Accounts.
-2. Connect Trakt.
-3. Connect TorBox.
-4. Enter Xtream IPTV details if using Live TV.
-5. Use General Settings to choose your max resolution and autoplay preference.
+This guide will show you how to set up TorBox and Trakt inside Kodi.
 
-You can edit this tutorial text in:
-resources/text/accounts_tutorial.txt
+TORBOX SETUP
+
+TorBox is required for playback.
+
+Go to this website:
+
+https://torbox.app/subscription
+
+Create an account and purchase a subscription.
+
+At the bottom of the subscription page, enter this referral code for bonus days:
+
+209bc076-4e6b-4352-91e3-070276e5aa76
+
+You can also use this referral link directly:
+
+https://torbox.app/subscription?referral=209bc076-4e6b-4352-91e3-070276e5aa76
+
+Once your account is created, go to:
+
+https://torbox.app/dashboard
+
+Click your profile icon in the top-right corner.
+
+Click Settings.
+
+On the settings page, you will see your API Key.
+
+Copy the API key exactly.
+
+Go back to Kodi and open:
+
+Accounts > TorBox Authorisation
+
+Enter your TorBox API key.
+
+Make sure the key is entered exactly, with no missing characters or extra spaces.
+
+TRAKT SETUP
+
+Trakt is used to sync your watch history, progress, and lists.
+
+Go to this website:
+
+https://trakt.tv/
+
+Create a free Trakt account.
+
+Once your Trakt account is ready, go back to Kodi.
+
+Open:
+
+Accounts
+
+Click:
+
+Authenticate Trakt
+
+Kodi will show a QR code or activation code.
+
+Scan the QR code with your phone and sign in to your Trakt account.
+
+Approve the connection.
+
+Once Trakt is authenticated, return to Kodi.
+
+FINISHED
+
+After TorBox and Trakt are both set up, movies are ready to use.
+
+Click Reload on the home page to refresh.
