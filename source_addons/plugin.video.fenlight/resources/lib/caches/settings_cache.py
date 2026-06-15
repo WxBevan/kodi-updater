@@ -282,9 +282,8 @@ def default_settings():
 {'setting_id': 'rpdb_enabled', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'None', '1': 'Movies', '2': 'TV Shows', '3': 'Both'}},
 #==================== Context Menu
 {'setting_id': 'context_menu.order', 'setting_type': 'string',
-'setting_default': 'extras,options,playback_options,browse_movie_set,browse_seasons,browse_episodes,recommended,more_like_this,similar,in_trakt_list,' \
+'setting_default': 'extras,options,playback_options,browse_movie_set,browse_seasons,browse_episodes,drop_tvshow,recommended,more_like_this,similar,in_trakt_list,' \
 'trakt_manager,personal_manager,tmdb_manager,favorites_manager,mark_watched,unmark_previous_episode,exit,refresh,reload'},
-
 
 #==================================================================================#
 #====================================SINGLE EPISODE LISTS==========================#

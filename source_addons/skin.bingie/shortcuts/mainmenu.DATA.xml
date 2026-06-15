@@ -46,19 +46,10 @@
 	<shortcut>
 		<label>Live TV</label>
 		<label2 />
-		<icon>shortcuts/tv.png</icon>
+  	    <icon>shortcuts/antenna.png</icon>
 		<thumb />
 		<action>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.open_live_tv)</action>
 	</shortcut>	
-
-	<!-- New/Popular Hub -->
-	<shortcut>
-		<label>$LOCALIZE[31227]</label>
-		<label2 />
-		<icon>shortcuts/new.png</icon>
-		<thumb />
-		<action>ActivateWindow(1112,return)</action>
-	</shortcut>
 
 	<!-- My List Hub -->
     <shortcut>

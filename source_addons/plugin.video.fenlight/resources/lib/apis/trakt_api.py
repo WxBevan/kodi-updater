@@ -423,13 +423,21 @@ def remove_from_collection(data):
 	return result
 
 def hide_unhide_progress_items(params):
-	action, media_type, media_id, list_type = params['action'], params['media_type'], params['media_id'], params['section']
-	media_type = 'movies' if media_type in ('movie', 'movies') else 'shows'
-	url = 'users/hidden/%s' % list_type if action == 'drop' else 'users/hidden/%s/remove' % list_type
-	data = {media_type: [{'ids': {'tmdb': media_id}}]}
-	call_trakt(url, data=data)
-	trakt_sync_activities()
-	kodi_utils.kodi_refresh()
+    action, media_type, media_id, list_type = params['action'], params['media_type'], params['media_id'], params['section']
+    refresh = params.get('refresh', 'true') == 'true'
+
+    media_type = 'movies' if media_type in ('movie', 'movies') else 'shows'
+    url = 'users/hidden/%s' % list_type if action == 'drop' else 'users/hidden/%s/remove' % list_type
+    data = {media_type: [{'ids': {'tmdb': media_id}}]}
+
+    result = call_trakt(url, data=data)
+    trakt_cache.clear_trakt_hidden_data(list_type)
+    trakt_sync_activities()
+
+    if refresh:
+        kodi_utils.kodi_refresh()
+
+    return result
 
 def trakt_search_lists(search_title, page_no):
 	def _process(dummy_arg):

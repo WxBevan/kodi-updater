@@ -29,7 +29,7 @@ def extras_button_label_values():
 
 def context_menu_items():
 	return {'extras': 'Extras', 'options': 'Options', 'playback_options': 'Playback Options', 'browse_movie_set': 'Browse Movie Set', 'browse_seasons': 'Browse TV Seasons',
-			'browse_episodes': 'Browse Season Episodes', 'recommended': 'Browse Recommended', 'more_like_this': 'Browse More Like This', 'similar': 'Browse Similar',
+			'browse_episodes': 'Browse Season Episodes', 'drop_tvshow': 'Drop/Undrop TV Show', 'recommended': 'Browse Recommended', 'more_like_this': 'Browse More Like This', 'similar': 'Browse Similar',
 			'in_trakt_list': 'In Trakt Lists', 'trakt_manager':'Trakt Lists Manager', 'personal_manager': 'Personal Lists Manager', 'tmdb_manager': 'TMDb Lists Manager',
 			'favorites_manager': 'Favorites Manager', 'mark_watched': 'Mark Watched/Unwatched', 'unmark_previous_episode': 'Unmark Previous Watched Episode',
 			'exit': 'Exit List', 'refresh': 'Refresh Widgets', 'reload': 'Reload Widgets'}

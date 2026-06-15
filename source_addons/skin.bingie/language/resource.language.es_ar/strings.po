@@ -2322,7 +2322,7 @@ msgid "OSD info panel"
 msgstr "Panel de información OSD"
 
 msgctxt "#31566"
-msgid "Shows"
+msgid "TV Shows"
 msgstr "Programas"
 
 # DO NOT TRANSLATE THIS STRING!!!

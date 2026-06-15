@@ -2322,7 +2322,7 @@ msgid "OSD info panel"
 msgstr ""
 
 msgctxt "#31566"
-msgid "Shows"
+msgid "TV Shows"
 msgstr ""
 
 # DO NOT TRANSLATE THIS STRING!!!

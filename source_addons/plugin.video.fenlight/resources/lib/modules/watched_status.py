@@ -52,13 +52,21 @@ def update_hidden_progress(media_id):
 	function({'action': 'undrop', 'media_type': 'shows', 'media_id': media_id, 'section': 'dropped', 'refresh': 'false'})
 
 def hide_unhide_progress_items(params):
-	action, media_id, refresh = params['action'], int(params.get('media_id', '0')), params.get('refresh', 'true') == 'true'
-	current_items = get_hidden_progress_items(0) or []
-	if action == 'drop': current_items.append(media_id)
-	else: current_items.remove(media_id)
-	watched_db = get_database()
-	watched_info = watched_db.execute('INSERT OR REPLACE INTO watched_status VALUES (?, ?, ?)', ('hidden_progress_items', 'hidden', repr(current_items),))
-	if refresh: kodi_refresh()
+    action, media_id, refresh = params['action'], int(params.get('media_id', '0')), params.get('refresh', 'true') == 'true'
+    current_items = get_hidden_progress_items(0) or []
+
+    if action == 'drop':
+        if media_id not in current_items:
+            current_items.append(media_id)
+    else:
+        if media_id in current_items:
+            current_items.remove(media_id)
+
+    watched_db = get_database()
+    watched_db.execute('INSERT OR REPLACE INTO watched_status VALUES (?, ?, ?)', ('hidden_progress_items', 'hidden', repr(current_items),))
+
+    if refresh:
+        kodi_refresh()
 
 def get_last_played_value(watched_indicators):
 	if watched_indicators == 0: return datetime.now().strftime('%Y-%m-%d %H:%M:%S')

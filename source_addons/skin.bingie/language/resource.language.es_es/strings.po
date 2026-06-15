@@ -2321,7 +2321,7 @@ msgctxt "#31565"
 msgid "OSD info panel"
 msgstr "Panel de información OSD"
 
-msgctxt "#31566"
+msgctxt "#TV 31566"
 msgid "Shows"
 msgstr "Programas"
 

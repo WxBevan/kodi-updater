@@ -40,8 +40,13 @@ def build_episode_list(params):
 				options_params = build_url({'mode': 'options_menu_choice', 'content': 'episode', 'tmdb_id': tmdb_id, 'poster': show_poster, 'is_external': is_external})
 				playback_options_params = build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season,
 												'episode': episode, 'episode_id': episode_id})
+				browse_more_episodes_params = build_url({'mode': 'build_season_list', 'tmdb_id': tmdb_id})	
+				trakt_manager_params = build_url({'mode': 'trakt_manager_choice', 'tmdb_id': tmdb_id, 'imdb_id': imdb_id, 'tvdb_id': tvdb_id, 'media_type': 'tvshow', 'icon': show_poster})			
 				url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
 										'episode_id': episode_id, playback_key: 'true'})
+
+
+
 				cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 				cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 				cm_append(['playback_options', ('[B]Playback Options[/B]', 'RunPlugin(%s)' % playback_options_params)])
@@ -81,12 +86,16 @@ def build_episode_list(params):
 				listitem.addContextMenuItems(cm)
 				listitem.setArt({'poster': show_poster, 'fanart': show_fanart, 'thumb': thumb, 'icon':thumb, 'clearlogo': show_clearlogo, 'landscape': show_landscape,
 								'season.poster': season_poster, 'tvshow.poster': show_poster, 'tvshow.clearlogo': show_clearlogo})
+
 				set_properties({
 					'episode_type': episode_type,
 					'fenlight.extras_params': extras_params,
 					'fenlight.options_params': options_params,
-					'fenlight.playback_options_params': playback_options_params
+					'fenlight.playback_options_params': playback_options_params,
+					'fenlight.more_episodes_params': browse_more_episodes_params,
+					'fenlight.trakt_manager_params': trakt_manager_params
 					})
+
 				yield (url_params, listitem, False)
 			except: pass
 	kodi_actor, make_listitem, build_url = kodi_utils.kodi_actor(), kodi_utils.make_listitem, kodi_utils.build_url
@@ -241,8 +250,29 @@ def build_single_episode(list_type, params={}):
 			cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 			cm_append(['playback_options', ('[B]Playback Options[/B]', 'RunPlugin(%s)' % \
 						build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season, 'episode': episode, 'episode_id': episode_id}))])
+			
+			browse_more_episodes_params = build_url({'mode': 'build_season_list', 'tmdb_id': tmdb_id})
+			trakt_manager_params = build_url({'mode': 'trakt_manager_choice', 'tmdb_id': tmdb_id, 'imdb_id': imdb_id, 'tvdb_id': tvdb_id, 'media_type': 'tvshow', 'icon': show_poster})
+			
+			
+			drop_tvshow_action = 'undrop' if int(tmdb_id) in hidden_list else 'drop'
+			drop_tvshow_label = 'Undrop TV Show' if drop_tvshow_action == 'undrop' else 'Drop TV Show'
+			drop_tvshow_mode = 'hide_unhide_progress_items' if watched_indicators == 0 else 'trakt.hide_unhide_progress_items'
+			drop_tvshow_params = build_url({
+				'mode': drop_tvshow_mode,
+				'action': drop_tvshow_action,
+				'media_type': 'shows',
+				'media_id': tmdb_id,
+				'section': 'dropped'
+			})
+
+			cm_append(['drop_tvshow', ('[B]%s[/B]' % drop_tvshow_label, 'RunPlugin(%s)' % drop_tvshow_params)])
 			cm_append(['browse_seasons', ('[B]Browse Seasons[/B]', window_command % build_url({'mode': 'build_season_list', 'tmdb_id': tmdb_id}))])
 			cm_append(['browse_episodes', ('[B]Browse Episodes[/B]', window_command % build_url({'mode': 'build_episode_list', 'tmdb_id': tmdb_id, 'season': season}))])
+
+
+			
+
 			if not unaired:
 				if playcount:
 					cm_append(['mark_watched', ('[B]Mark Unwatched %s[/B]' % watched_title, 'RunPlugin(%s)' % \
@@ -291,7 +321,9 @@ def build_single_episode(list_type, params={}):
 				'episode_type': episode_type,
 				'fenlight.extras_params': extras_params,
 				'fenlight.options_params': options_params,
-				'fenlight.playback_options_params': playback_options_params
+				'fenlight.playback_options_params': playback_options_params,
+				'fenlight.more_episodes_params': browse_more_episodes_params,
+				'fenlight.trakt_manager_params': trakt_manager_params
 				})
 			item_list_append({'list_items': (url_params, listitem, False), 'first_aired': premiered, 'name': '%s - %sx%s' % (title, str_season_zfill2, str_episode_zfill2),
 							'unaired': unaired, 'last_played': ep_data_get('last_played', resinsert), 'sort_order': _position, 'unwatched': ep_data_get('unwatched')})
@@ -316,6 +348,8 @@ def build_single_episode(list_type, params={}):
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
 	playback_key = settings.playback_key()
 	watched_db = ws.get_database(watched_indicators)
+	hidden_list = ws.get_hidden_progress_items(watched_indicators)
+
 	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	if list_type == 'episode.next':
 		include_unwatched, include_unaired, nextep_content = settings.nextep_include_unwatched(), settings.nextep_include_unaired(), settings.nextep_method()

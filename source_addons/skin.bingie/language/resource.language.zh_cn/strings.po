@@ -2313,7 +2313,7 @@ msgid "OSD info panel"
 msgstr "屏幕显示信息面板"
 
 msgctxt "#31566"
-msgid "Shows"
+msgid "TV Shows"
 msgstr "剧集"
 
 # DO NOT TRANSLATE THIS STRING!!!
