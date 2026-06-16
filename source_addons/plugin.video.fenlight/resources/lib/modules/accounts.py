@@ -215,19 +215,27 @@ def generate_iptv(params=None):
             _progress_update(progress, 100, 'IPTV generated successfully.')
 
             final_text = (
-                'IPTV generated successfully.[CR][CR]'
-                'Channels: %s[CR]'
+                'Live TV generated successfully.[CR][CR]'
+                'Enabled channels: %s[CR]'
+                'Catalogue channels: %s[CR]'
+                'Disabled channels: %s[CR]'
+                'Stream variants: %s[CR]'
                 'Dropped/review items: %s[CR][CR]'
                 'M3U:[CR]%s[CR][CR]'
                 'EPG:[CR]%s[CR][CR]'
+                'Catalogue:[CR]%s[CR][CR]'
                 'Report:[CR]%s[CR][CR]'
                 'IPTV Simple settings updated:[CR]%s[CR][CR]'
                 'PVR reload:[CR]%s'
             ) % (
                 result.get('channels', 'unknown'),
+                result.get('catalog_channels', 'unknown'),
+                result.get('disabled', 'unknown'),
+                result.get('stream_variants', 'unknown'),
                 result.get('dropped', 'unknown'),
                 result.get('playlist', ''),
                 result.get('epg', ''),
+                result.get('catalog', ''),
                 result.get('report', ''),
                 iptv_simple_settings or 'Not updated',
                 pvr_reload_text
@@ -670,3 +678,160 @@ def set_gui_sounds(params=None):
             heading='Kodi GUI Sounds',
             text='Could not change Kodi GUI sounds setting:[CR][CR]%s' % str(exc)
         )
+
+# =========================
+# Grouped Live TV channel management
+# =========================
+
+def _iptv_progress_dialog(heading='Live TV'):
+    try:
+        import xbmcgui
+        dialog = xbmcgui.DialogProgress()
+        dialog.create(heading, 'Preparing...')
+        return dialog
+    except Exception:
+        return None
+
+
+def _catalog_channel_label(channel):
+    # Kodi's multiselect dialog already draws the tick/untick indicator.
+    # Do not prefix labels with [X] / [ ] or the rows look duplicated.
+    section = channel.get('section') or 'Other'
+    epg = 'EPG' if channel.get('xmltv_id') else 'No EPG'
+    streams = len(channel.get('streams', []))
+    return '%s - %s  (%s links, %s)' % (section, channel.get('name', 'Unknown'), streams, epg)
+
+
+def manage_iptv_channels(params=None):
+    """Open a popup where channels can be ticked/unticked, then rebuild once on OK."""
+    try:
+        import xbmcgui
+        from modules import iptv_generator
+
+        catalog = iptv_generator.load_catalog()
+        channels = catalog.get('channels', [])
+        if not channels:
+            return k.ok_dialog(
+                heading='Manage Live TV Channels',
+                text='No channel catalogue was found.[CR][CR]Run Generate / Refresh Live TV first.'
+            )
+
+        labels = [_catalog_channel_label(item) for item in channels]
+        preselect = [index for index, item in enumerate(channels) if item.get('enabled')]
+
+        selected = xbmcgui.Dialog().multiselect(
+            'Manage Live TV Channels',
+            labels,
+            preselect=preselect
+        )
+
+        if selected is None:
+            return
+
+        selected_keys = [channels[index].get('key') for index in selected if 0 <= index < len(channels)]
+
+        progress = _iptv_progress_dialog('Manage Live TV Channels')
+        try:
+            _progress_update(progress, 20, 'Saving channel choices...')
+            _progress_update(progress, 50, 'Rebuilding M3U and EPG...')
+            result = iptv_generator.update_catalog_enabled_states(selected_keys)
+            _progress_update(progress, 100, 'Live TV files rebuilt.')
+        finally:
+            _progress_close(progress)
+
+        if not result or result.get('success') is not True:
+            error = result.get('error', 'Unknown error') if isinstance(result, dict) else 'Unknown error'
+            return k.ok_dialog(heading='Manage Live TV Channels', text='Could not rebuild Live TV files:[CR][CR]%s' % error)
+
+        pvr_reload = result.get('pvr_reload', {})
+        pvr_reload_text = pvr_reload.get('message', 'PVR reload status unknown.') if isinstance(pvr_reload, dict) else str(pvr_reload)
+        return k.ok_dialog(
+            heading='Manage Live TV Channels',
+            text=(
+                'Channel choices saved.[CR][CR]'
+                'Enabled channels: %s[CR]'
+                'Disabled channels: %s[CR]'
+                'Filtered EPG: %s[CR][CR]'
+                'PVR reload:[CR]%s'
+            ) % (
+                result.get('channels', 'unknown'),
+                result.get('disabled', 'unknown'),
+                result.get('filtered_epg', 'unknown'),
+                pvr_reload_text
+            )
+        )
+
+    except Exception as exc:
+        return k.ok_dialog(
+            heading='Manage Live TV Channels',
+            text='Could not open the channel manager:[CR][CR]%s' % str(exc)
+        )
+
+
+def rebuild_iptv_files(params=None):
+    """Rebuild IPTV.m3u and IPTV-EPG.xml from the existing catalogue without redownloading provider JSON."""
+    progress = _iptv_progress_dialog('Rebuild Live TV')
+    try:
+        from modules import iptv_generator
+        _progress_update(progress, 25, 'Loading channel catalogue...')
+        _progress_update(progress, 55, 'Rebuilding M3U and filtered EPG...')
+        result = iptv_generator.rebuild_from_catalog(reload_pvr=True)
+        _progress_update(progress, 100, 'Done.')
+    except Exception as exc:
+        _progress_close(progress)
+        return k.ok_dialog(heading='Rebuild Live TV', text='Could not rebuild Live TV files:[CR][CR]%s' % str(exc))
+    finally:
+        _progress_close(progress)
+
+    pvr_reload = result.get('pvr_reload', {})
+    pvr_reload_text = pvr_reload.get('message', 'PVR reload status unknown.') if isinstance(pvr_reload, dict) else str(pvr_reload)
+    return k.ok_dialog(
+        heading='Rebuild Live TV',
+        text=(
+            'Live TV files rebuilt.[CR][CR]'
+            'Enabled channels: %s[CR]'
+            'Filtered EPG: %s[CR][CR]'
+            'PVR reload:[CR]%s'
+        ) % (result.get('channels', 'unknown'), result.get('filtered_epg', 'unknown'), pvr_reload_text)
+    )
+
+
+def refresh_iptv_epg(params=None):
+    """Redownload EPGShare UK/US sources and rebuild the filtered local IPTV-EPG.xml."""
+    progress = _iptv_progress_dialog('Refresh Live TV EPG')
+    try:
+        from modules import iptv_generator
+        _progress_update(progress, 15, 'Downloading fresh UK/US EPG data...')
+        _progress_update(progress, 50, 'Filtering EPG for enabled channels...')
+        result = iptv_generator.refresh_epg_only(reload_pvr=True, force=True)
+        _progress_update(progress, 100, 'Done.')
+    except Exception as exc:
+        _progress_close(progress)
+        return k.ok_dialog(heading='Refresh Live TV EPG', text='Could not refresh Live TV EPG:[CR][CR]%s' % str(exc))
+    finally:
+        _progress_close(progress)
+
+    pvr_reload = result.get('pvr_reload', {})
+    pvr_reload_text = pvr_reload.get('message', 'PVR reload status unknown.') if isinstance(pvr_reload, dict) else str(pvr_reload)
+    return k.ok_dialog(
+        heading='Refresh Live TV EPG',
+        text=(
+            'Live TV EPG refreshed.[CR][CR]'
+            'Filtered EPG: %s[CR][CR]'
+            'EPG file:[CR]%s[CR][CR]'
+            'PVR reload:[CR]%s'
+        ) % (result.get('filtered_epg', 'unknown'), result.get('epg', ''), pvr_reload_text)
+    )
+
+
+def iptv_play_channel(params=None):
+    """Resolve plugin:// Live TV channel clicks from IPTV Simple."""
+    params = params or {}
+    channel_key = params.get('channel') or params.get('channel_key') or ''
+    if not channel_key:
+        return k.ok_dialog(heading='Live TV', text='Missing channel key.')
+    try:
+        from modules import iptv_generator
+        return iptv_generator.play_channel(channel_key)
+    except Exception as exc:
+        return k.ok_dialog(heading='Live TV Playback', text='Could not play this channel:[CR][CR]%s' % str(exc))

@@ -105,6 +105,9 @@
                     <item id="10">
                         <property name="setting_label">General Settings</property>
                     </item>
+                    <item id="20">
+                        <property name="setting_label">Live TV</property>
+                    </item>
                     <item id="15">
                         <property name="setting_label">Tutorial</property>
                     </item>
@@ -462,15 +465,15 @@
                           <property name="setting_description">Revoke authorization for the current Trakt account.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
                       </item>                      
-        <!-- Xtream IPTV -->
+        <!-- Live TV 20 -->
                       <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>Container(2000).HasFocus(20)</visible>
                           <property name="setting_label">Xtream IPTV</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>Container(2000).HasFocus(20)</visible>
                           <property name="setting_label">Server URL</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.xtream.server)]</property>
@@ -478,7 +481,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_xtream_setting&amp;setting_id=xtream.server)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>Container(2000).HasFocus(20)</visible>
                           <property name="setting_label">Username</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.xtream.username)]</property>
@@ -486,7 +489,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_xtream_setting&amp;setting_id=xtream.username)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
+                          <visible>Container(2000).HasFocus(20)</visible>
                           <property name="setting_label">Password</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.xtream.password)]</property>
@@ -494,12 +497,42 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.set_xtream_setting&amp;setting_id=xtream.password)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(5)</visible>
-                          <property name="setting_label">Generate IPTV</property>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Live TV Files</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Generate / Refresh Live TV</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">...</property>
-                          <property name="setting_description">Generate M3U and EPG from the saved Xtream details. The generator module will be connected in the next step.</property>
+                          <property name="setting_description">Download the provider streams, rebuild the grouped channel catalogue, write IPTV.m3u and IPTV-EPG.xml, update IPTV Simple, and reload Live TV.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.generate_iptv)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Manage Channels</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Popup</property>
+                          <property name="setting_description">Tick or untick Live TV channels. Kids and Non-UK Extras are available but disabled by default.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.manage_iptv_channels)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Rebuild IPTV Files</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Local</property>
+                          <property name="setting_description">Rebuild the M3U and filtered EPG from the existing catalogue without redownloading the provider list.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.rebuild_iptv_files)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Open Live TV Guide</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Guide</property>
+                          <property name="setting_description">Open Kodi's Live TV guide.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.open_live_tv)</onclick>
                       </item>
 
 <!-- GENERAL SETTINGS 10 -->

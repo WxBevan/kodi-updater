@@ -259,6 +259,43 @@ class AddonXMLCheck:
 		kodi_utils.disable_enable_addon()
 
 
+class IPTVEPGRefresh:
+	def run(self):
+		kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Service Starting')
+		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
+		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
+
+		# Let Kodi, PVR, network and Fen Light startup settle first.
+		if wait_for_abort(60):
+			return kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Service Aborted Before First Run')
+
+		while not monitor.abortRequested():
+			try:
+				# Do not refresh while playback is active or services are paused for sleep.
+				if is_playing() or kodi_utils.get_property(pause_services_prop) == 'true':
+					wait_for_abort(300)
+					continue
+
+				from modules import iptv_generator
+				result = iptv_generator.refresh_epg_if_needed(max_age_hours=12, reload_pvr=True)
+				if isinstance(result, dict) and result.get('skipped'):
+					kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Skipped: %s' % result.get('reason', 'not needed'))
+				else:
+					kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Complete: %s' % str(result))
+			except Exception as exc:
+				kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Error: %s' % str(exc))
+
+			# Check hourly, but refresh_epg_if_needed only does real work when stale.
+			if wait_for_abort(3600):
+				break
+
+		try: del monitor
+		except: pass
+		try: del player
+		except: pass
+		return kodi_utils.logger('Fen Light', 'IPTVEPGRefresh Service Finished')
+
+
 class FenLightMonitor(Monitor):
 	def __init__ (self):
 		Monitor.__init__(self)
@@ -277,6 +314,7 @@ class FenLightMonitor(Monitor):
 		## FLAM private build: disable built-in Fen Light GitHub updater.
 		## Thread(target=UpdateCheck().run).start()
 		Thread(target=WidgetRefresher().run).start()
+		Thread(target=IPTVEPGRefresh().run).start()
 		AutoStart().run()
 
 	def onNotification(self, sender, method, data):
