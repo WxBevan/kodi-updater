@@ -52,31 +52,62 @@ class DebridCacheWipe:
 		return kodi_utils.logger('Fen Light', 'DebridCacheWipe Service Finished')
 
 
-class KodiLiveTVDefaults:
-	def run(self):
-		kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Service Starting')
+class KodiDefaultSettings:
+	def _jsonrpc(self, method, params=None):
+		import json
+		import xbmc
+
+		request = {
+			'jsonrpc': '2.0',
+			'id': 1,
+			'method': method
+		}
+
+		if params is not None:
+			request['params'] = params
+
+		response = xbmc.executeJSONRPC(json.dumps(request))
+		kodi_utils.logger('Fen Light', 'KodiDefaultSettings JSON-RPC response: %s' % response)
 
 		try:
-			import json
-			import xbmc
+			data = json.loads(response or '{}')
+		except Exception:
+			return False
 
-			request = {
-				'jsonrpc': '2.0',
-				'id': 1,
-				'method': 'Settings.SetSettingValue',
-				'params': {
-					'setting': 'epg.selectaction',
-					'value': 1
-				}
-			}
+		return not bool(data.get('error'))
 
-			response = xbmc.executeJSONRPC(json.dumps(request))
-			kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults EPG select action response: %s' % response)
+	def _set_kodi_setting(self, setting_id, value):
+		return self._jsonrpc('Settings.SetSettingValue', {
+			'setting': setting_id,
+			'value': value
+		})
+
+	def _set_language_english(self, setting_id):
+		# Kodi can be a little picky depending on build/platform.
+		# Try the friendly value first, then common lowercase/code fallbacks.
+		for value in ('English', 'english', 'eng'):
+			if self._set_kodi_setting(setting_id, value):
+				kodi_utils.logger('Fen Light', 'KodiDefaultSettings set %s to %s' % (setting_id, value))
+				return True
+
+		kodi_utils.logger('Fen Light', 'KodiDefaultSettings could not set %s to English' % setting_id)
+		return False
+
+	def run(self):
+		kodi_utils.logger('Fen Light', 'KodiDefaultSettings Service Starting')
+
+		try:
+			# Live TV / EPG defaults.
+			self._set_kodi_setting('epg.selectaction', 1)
+
+			# Player -> Language defaults.
+			self._set_language_english('locale.audiolanguage')
+			self._set_language_english('locale.subtitlelanguage')
 
 		except Exception as exc:
-			kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Error: %s' % str(exc))
+			kodi_utils.logger('Fen Light', 'KodiDefaultSettings Error: %s' % str(exc))
 
-		return kodi_utils.logger('Fen Light', 'KodiLiveTVDefaults Service Finished')
+		return kodi_utils.logger('Fen Light', 'KodiDefaultSettings Service Finished')
 
 
 class DatabaseMaintenance:
@@ -303,7 +334,7 @@ class FenLightMonitor(Monitor):
 
 	def startServices(self):
 		SetAddonConstants().run()
-		KodiLiveTVDefaults().run()
+		KodiDefaultSettings().run()
 		DebridCacheWipe().run()
 		DatabaseMaintenance().run()
 		SyncSettings().run()

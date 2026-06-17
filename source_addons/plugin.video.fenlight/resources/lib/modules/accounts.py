@@ -75,7 +75,14 @@ def toggle_autoplay(params=None):
     set_setting('auto_play_movie', new_value)
     set_setting('auto_play_episode', new_value)
 
+def toggle_auto_next_episode(params=None):
+	current_value = get_setting('fenlight.autoplay_next_episode', 'false') == 'true'
+	new_value = 'false' if current_value else 'true'
 
+	set_setting('autoplay_next_episode', new_value)
+
+	# Keep the custom Accounts window row updated immediately.
+	k.set_property('fenlight.autoplay_next_episode', new_value)
 
 def show_tutorial(params=None):
     tutorial_file = k.translate_path('special://home/addons/plugin.video.fenlight/resources/text/accounts_tutorial.txt')

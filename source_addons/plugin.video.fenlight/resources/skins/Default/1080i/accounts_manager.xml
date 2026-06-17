@@ -520,19 +520,19 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">Refresh EPG Only</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">EPG</property>
+                          <property name="setting_description">Download fresh UK/US EPG data and rebuild only IPTV-EPG.xml from the existing channel catalogue.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.refresh_iptv_epg)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
                           <property name="setting_label">Rebuild IPTV Files</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">Local</property>
                           <property name="setting_description">Rebuild the M3U and filtered EPG from the existing catalogue without redownloading the provider list.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.rebuild_iptv_files)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(20)</visible>
-                          <property name="setting_label">Open Live TV Guide</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">Guide</property>
-                          <property name="setting_description">Open Kodi's Live TV guide.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.open_live_tv)</onclick>
                       </item>
 
 <!-- GENERAL SETTINGS 10 -->
@@ -567,6 +567,14 @@
                           <property name="setting_value">false</property>
                           <property name="setting_description">Toggle autoplay for both Movies and TV Shows.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_autoplay)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <property name="setting_label">Auto Next Episode</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_next_episode)]</property>
+                          <property name="setting_description">Automatically play the next episode of a TV show when the current episode finishes. This only takes effect when TV Show autoplay is enabled.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_auto_next_episode)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>

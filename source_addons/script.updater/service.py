@@ -6,6 +6,7 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcvfs
+import shutil
 
 
 ADDON_ID = "script.updater"
@@ -13,6 +14,8 @@ LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 
 SESSION_PROPERTY = f"{ADDON_ID}.checked_this_session"
 
+KEYMAP_SOURCE = "special://home/addons/script.updater/resources/keymaps/stop_back.xml"
+KEYMAP_DEST = "special://profile/keymaps/kodi_updater_stop_back.xml"
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log(f"[{ADDON_ID}] {message}", level)
@@ -75,11 +78,34 @@ def stay_alive(monitor):
             break
 
 
+def install_stop_back_keymap():
+    try:
+        source = xbmcvfs.translatePath(KEYMAP_SOURCE)
+        dest = xbmcvfs.translatePath(KEYMAP_DEST)
+        dest_dir = os.path.dirname(dest)
+
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
+
+        if os.path.exists(source):
+            shutil.copy2(source, dest)
+            log("Installed stop-back keymap.")
+            xbmc.executebuiltin("Action(reloadkeymaps)")
+        else:
+            log(f"Stop-back keymap source missing: {source}", xbmc.LOGWARNING)
+
+    except Exception as exc:
+        log(f"Failed to install stop-back keymap: {exc}", xbmc.LOGWARNING)
+
+
+
 def main():
     monitor = xbmc.Monitor()
 
     if monitor.waitForAbort(15):
         return
+    
+    install_stop_back_keymap()
 
     window = xbmcgui.Window(10000)
 

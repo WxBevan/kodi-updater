@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keymap>
+    <fullscreenvideo>
+        <keyboard>
+            <escape>stop</escape>
+            <backspace>stop</backspace>
+            <browser_back>stop</browser_back>
+            <key id="61448">stop</key>
+        </keyboard>
+        <remote>
+            <back>stop</back>
+        </remote>
+    </fullscreenvideo>
+
+    <fullscreenlivetv>
+        <keyboard>
+            <escape>stop</escape>
+            <backspace>stop</backspace>
+            <browser_back>stop</browser_back>
+            <key id="61448">stop</key>
+        </keyboard>
+        <remote>
+            <back>stop</back>
+        </remote>
+    </fullscreenlivetv>
+</keymap>
