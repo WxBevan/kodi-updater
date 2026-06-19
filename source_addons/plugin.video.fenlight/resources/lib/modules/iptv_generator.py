@@ -4202,3 +4202,243 @@ def run_generator(reload_pvr=True):
         "pvr_reload": pvr_reload,
         "timings": timings,
     }
+
+# ============================================================================
+# FLAM Live TV display-label cleanup v1
+#
+# User-facing stream labels are now cleaned in a provider-agnostic way:
+#   - original provider names stay stored as "name" for matching/debugging
+#   - selector uses "display_name" where available
+#   - RAW / HEVC / H265 are hidden from the user-facing label
+#   - clear quality labels are kept: 4K UHD, FHD, HD, SD
+#   - common leading provider/country/source prefixes are removed only from labels
+#
+# This deliberately does not alter matching logic, stream IDs, EPG IDs, or URLs.
+# ============================================================================
+
+try:
+    OPTIMISATION_VERSION = str(OPTIMISATION_VERSION) + "+display-label-cleanup-v1"
+except Exception:
+    OPTIMISATION_VERSION = "display-label-cleanup-v1"
+
+
+def _display_quality_from_name(value):
+    """Return a simple family-friendly quality label derived from provider text.
+
+    This is label-derived only. Providers can mislabel streams, so this should
+    not be treated as a guaranteed probed resolution.
+    """
+    text = _safe_kodi_display_text(value).upper()
+    text = text.replace("FULLHD", "FULL HD")
+    if re.search(r"(^|[^A-Z0-9])(4K|UHD|2160P?|3840P?)([^A-Z0-9]|$)", text):
+        return "4K UHD"
+    if re.search(r"(^|[^A-Z0-9])(FHD|FULL\s*HD|1080P?)([^A-Z0-9]|$)", text):
+        return "FHD"
+    if re.search(r"(^|[^A-Z0-9])(HD|720P?)([^A-Z0-9]|$)", text):
+        return "HD"
+    if re.search(r"(^|[^A-Z0-9])(SD|576P?|480P?)([^A-Z0-9]|$)", text):
+        return "SD"
+    return ""
+
+
+def _remove_leading_provider_prefixes_for_display(value):
+    text = clean(value)
+
+    # Remove repeated provider/country/source prefixes commonly used by Xtream
+    # providers. This is deliberately display-only and conservative: it targets
+    # prefix tokens followed by ':' or '-' at the very start, not words in the
+    # real channel name.
+    prefix_pattern = re.compile(
+        r"^\s*(?:"
+        r"UK|US|USA|CA|AU|NZ|IE|IRL|VIP|NOW|LIVE|SPORTS|EVENT|"
+        r"FHD|HD|UHD|SD|4K\s*[- ]?\s*WC|WC"
+        r")\s*[:\-]+\s*",
+        re.I
+    )
+
+    for _ in range(4):
+        new_text = prefix_pattern.sub("", text).strip()
+        if new_text == text:
+            break
+        text = new_text
+
+    # Remove country hints such as "(US)" or "[UK]" when they are just labels.
+    text = re.sub(r"(?i)\s*[\(\[]\s*(UK|US|USA|CA|AU|NZ|IE|IRL)\s*[\)\]]\s*", " ", text)
+    return text.strip()
+
+
+def _clean_variant_base_for_display(value):
+    text = _safe_kodi_display_text(value)
+    text = _remove_leading_provider_prefixes_for_display(text)
+
+    # Remove technical/provider-quality tokens from the base name. The visible
+    # quality is re-added as a simple label by _clean_variant_display_name().
+    # Use lookarounds so adjacent quality tokens such as "UHD 3840P"
+    # are all removed in one pass without consuming the separator needed by
+    # the next match.
+    text = re.sub(
+        r"(?i)(?<![A-Z0-9])("
+        r"4K|UHD|FHD|FULL\s*HD|HD|SD|RAW|HEVC|H265|H\.265|"
+        r"3840P?|2160P?|1080P?|720P?|576P?|480P?|"
+        r"50FPS|60FPS|25FPS|30FPS"
+        r")(?![A-Z0-9])",
+        " ",
+        text,
+    )
+
+    # Remove common decorative provider markers.
+    text = text.replace("◉", " ").replace("●", " ").replace("•", " ")
+    text = re.sub(r"\s+", " ", text).strip(" :-|")
+    return _title_keep_acronyms(text)
+
+
+def _clean_variant_display_name_from_text(original_name, channel_name=""):
+    original_name = clean(original_name)
+    channel_name = clean(channel_name)
+
+    quality = _display_quality_from_name(original_name)
+    base = _clean_variant_base_for_display(original_name)
+
+    # For normal channel groups, prefer the clean catalogue channel name where
+    # the provider variant clearly describes the same channel. For broad event
+    # groups like "4K World Cup", keep the more specific feed name from the
+    # variant, e.g. "FOX Sports 1 · 4K UHD".
+    if channel_name:
+        base_compact = compact_text(base)
+        channel_compact = compact_text(channel_name)
+        if not base or len(base_compact) < 3:
+            base = channel_name
+        elif channel_compact and (
+            channel_compact in base_compact
+            or base_compact in channel_compact
+        ):
+            base = channel_name
+
+    if not base:
+        base = channel_name or "Stream"
+
+    if quality:
+        # Avoid duplicate labels such as "BBC One 4K · 4K UHD" where the base
+        # somehow still contains the same quality wording.
+        return "%s · %s" % (base, quality)
+    return base
+
+
+def _clean_variant_display_name(item, channel_name=""):
+    return _clean_variant_display_name_from_text(get_stream_name(item), channel_name=channel_name)
+
+
+def _variant_quality_label(item):
+    """Override: keep only simple quality labels in catalogue/report/UI."""
+    quality = _display_quality_from_name(get_stream_name(item))
+    return quality or "Standard"
+
+
+def _stream_to_variant(item, wanted=None, method="exact_provider_epg", match_score="exact"):
+    """Override: keep original provider name and add a clean display_name.
+
+    Runtime impact is tiny because this runs only when a stream has already
+    matched a catalogue channel/extra. It does not perform provider-wide fuzzy
+    matching or stream probing.
+    """
+    wanted = wanted or {}
+    channel_name = clean(wanted.get("name") or wanted.get("display_name") or "")
+
+    return {
+        "name": get_stream_name(item),                 # original provider name
+        "display_name": _clean_variant_display_name(item, channel_name=channel_name),
+        "stream_id": str(get_stream_id(item)),
+        "provider_epg": get_provider_epg(item),
+        "logo": get_logo(item),
+        "category": _clean_category(item),
+        "quality": _variant_quality_label(item),
+        "quality_score": quality_score(dict(item, _group=wanted.get("group", ""))),
+        "priority_score": _variant_priority(item, wanted, 0 if match_score == "exact" else match_score),
+        "match_method": method,
+        "match_score": match_score,
+        "output_format": OUTPUT_FORMAT,
+    }
+
+
+def _safe_stream_label(stream, channel_name=""):
+    """Return the clean user-facing label for the Kodi stream picker."""
+    display = clean(stream.get("display_name"))
+    if display:
+        return _safe_kodi_display_text(display)
+    return _clean_variant_display_name_from_text(stream.get("name") or "Unknown", channel_name=channel_name)
+
+
+def _build_picker_labels_for_streams(channel, streams):
+    """Build clean selector labels and number duplicates without technical noise."""
+    channel_name = clean(channel.get("name"))
+    base_labels = [_safe_stream_label(stream, channel_name=channel_name) for stream in streams]
+
+    counts = {}
+    for label in base_labels:
+        counts[label] = counts.get(label, 0) + 1
+
+    seen = {}
+    labels = []
+    for index, (stream, base) in enumerate(zip(streams, base_labels), start=1):
+        if counts.get(base, 0) > 1:
+            seen[base] = seen.get(base, 0) + 1
+            visible_base = "%s %s" % (base, seen[base])
+        else:
+            visible_base = base
+
+        label = "%02d. %s" % (index, visible_base)
+
+        # Keep stream ID only as a small grey debugging hint. Do not show RAW,
+        # HEVC, provider EPG IDs or other confusing source labels.
+        stream_id = clean(stream.get("stream_id"))
+        if stream_id:
+            label += "  [COLOR grey](ID %s)[/COLOR]" % stream_id
+        labels.append(label)
+    return labels
+
+
+def play_channel(channel_key):
+    """Override: resolve plugin:// M3U item with clean stream selector labels."""
+    import sys
+    try:
+        import xbmcgui
+        import xbmcplugin
+    except Exception as error:
+        raise GeneratorError("Kodi playback modules unavailable: %s" % str(error))
+
+    catalog = load_catalog()
+    channel = None
+    for item in catalog.get("channels", []):
+        if item.get("key") == channel_key:
+            channel = item
+            break
+    if not channel:
+        raise GeneratorError("Live TV channel was not found in the catalogue. Run Generate / Refresh Live TV again.")
+
+    streams = channel.get("streams", [])
+    if not streams:
+        raise GeneratorError("No stream variants found for %s." % channel.get("name", channel_key))
+
+    if len(streams) == 1:
+        chosen = streams[0]
+    else:
+        labels = _build_picker_labels_for_streams(channel, streams)
+        index = xbmcgui.Dialog().select(_safe_kodi_display_text(channel.get("name", "Live TV")), labels)
+        if index < 0:
+            try:
+                xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem())
+            except Exception:
+                pass
+            return None
+        chosen = streams[index]
+
+    url = _stream_url_for_variant(chosen)
+    listitem = xbmcgui.ListItem(path=url)
+    listitem.setProperty("IsPlayable", "true")
+    try:
+        listitem.setMimeType("video/MP2T")
+    except Exception:
+        pass
+    xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
+    return url
+
