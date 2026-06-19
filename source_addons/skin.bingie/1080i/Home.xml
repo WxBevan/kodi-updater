@@ -21,10 +21,9 @@
 
 -->
 
-<!-- Replacing with -->
-    <onload condition="!Skin.HasSetting(FLAMSkinShortcutsBuilt)">RunScript(script.skinshortcuts,type=buildxml&amp;mainmenuID=900&amp;levels=1&amp;group=mainmenu|powermenu|searchmenu|tmdbsearchmenu|moviehub|tvshowhub|newhub|musichub|customhub|somethinghub|mylisthub)</onload>
-    <onload condition="!Skin.HasSetting(FLAMSkinShortcutsBuilt)">Skin.SetBool(FLAMSkinShortcutsBuilt)</onload>
-
+<!-- Build Skin Shortcuts once after FLAM menu/widget changes -->
+    <onload condition="!Skin.HasSetting(FLAMSkinShortcutsBuiltWatchlistRows3)">RunScript(script.skinshortcuts,type=buildxml&amp;mainmenuID=900&amp;levels=1&amp;group=mainmenu|powermenu|searchmenu|tmdbsearchmenu|moviehub|tvshowhub|newhub|musichub|customhub|somethinghub|mylisthub)</onload>
+    <onload condition="!Skin.HasSetting(FLAMSkinShortcutsBuiltWatchlistRows3)">Skin.SetBool(FLAMSkinShortcutsBuiltWatchlistRows3)</onload>
 <!-- end    -->
 
 
