@@ -1701,7 +1701,7 @@ fix for fanarttv landscape art overwriting TMDb landscape art
 		<import addon="script.bingie.toolbox" version="1.0.0" />
 		<import addon="script.bingie.widgets" version="1.0.1" />
 		<import addon="script.skinshortcuts" version="2.0.3" />
-		<import addon="resource.images.studios.coloured" version="0.0.0" />
+		<import addon="resource.images.studios.coloured" version="1.0.0" />
 		<import addon="plugin.video.tmdb.bingie.helper" version="1.0.1" /> 
 		<import addon="plugin.program.autocompletion" version="2.1.3" />
         <import addon="resource.images.studios.white" version="0.0.0" />
