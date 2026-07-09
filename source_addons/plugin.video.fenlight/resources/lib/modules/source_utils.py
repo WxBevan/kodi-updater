@@ -257,6 +257,7 @@ def get_info(title):
 	elif any(i in title for i in ('2160p.bluray.hevc.truehd', '2160p.bluray.hevc.dts', '2160p.bluray.hevc.lpcm', '2160p.blu.ray.hevc.truehd', '2160p.blu.ray.hevc.dts',
 		'2160p.uhd.bluray', '2160p.uhd.blu.ray', '2160p.us.bluray.hevc.truehd', '2160p.us.bluray.hevc.dts', '.hdr.', 'hdr10', 'hdr.10', 'uhd.bluray.2160p', 'uhd.blu.ray.2160p')):
 		info_append('[B]HDR[/B]')
+
 	elif all(i in title for i in ('2160p', 'remux')):
 		info_append('[B]HDR[/B]')
 	if '[B]D/VISION[/B]' in info:

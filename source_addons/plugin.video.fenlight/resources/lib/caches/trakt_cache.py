@@ -83,6 +83,17 @@ def reset_activity(latest_activities):
 	except: cached_data = default_activities()
 	return cached_data
 
+def clear_trakt_activity():
+	try:
+		dbcon = connect_database('trakt_db')
+		dbcon.execute(
+			'DELETE FROM trakt_data WHERE id = ?',
+			('trakt_get_activity',)
+		)
+		return True
+	except:
+		return False
+
 def clear_daily_cache():
 	clear_trakt_calendar()
 	clear_trakt_list_data('my_lists')

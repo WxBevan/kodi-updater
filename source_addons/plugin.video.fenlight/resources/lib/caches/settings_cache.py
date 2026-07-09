@@ -218,6 +218,7 @@ def default_settings():
 {'setting_id': 'image_download_directory', 'setting_type': 'path', 'setting_default': 'special://profile/addon_data/plugin.video.fenlight/Image Downloads/', 'browse_mode': '0'},
 
 
+
 #================================================================================#
 #====================================FEATURES====================================#
 #================================================================================#
@@ -587,5 +588,19 @@ def default_settings():
 {'setting_id': 'updatechecks.personal_lists_02', 'setting_type': 'string', 'setting_default': 'false'},
 {'setting_id': 'updatechecks.context_menu_update_01', 'setting_type': 'string', 'setting_default': 'false'},
 {'setting_id': 'updatechecks.context_menu_update_02', 'setting_type': 'string', 'setting_default': 'false'},
-{'setting_id': 'updatechecks.context_menu_update_03', 'setting_type': 'string', 'setting_default': 'false'}
+{'setting_id': 'updatechecks.context_menu_update_03', 'setting_type': 'string', 'setting_default': 'false'},
+
+# One-time Trakt migration
+{'setting_id': 'updatechecks.trakt_watched_progress_update_01', 'setting_type': 'string', 'setting_default': 'false'},
+
+# Automatic display capability filtering
+{'setting_id': 'device.auto_video_filter', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'device.auto_resolution_filter', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'device.detected_hdr_types', 'setting_type': 'string', 'setting_default': 'unknown'},
+{'setting_id': 'device.detected_max_quality', 'setting_type': 'string', 'setting_default': 'unknown'},
+{'setting_id': 'device.detected_width', 'setting_type': 'string', 'setting_default': '0'},
+{'setting_id': 'device.detected_height', 'setting_type': 'string', 'setting_default': '0'}
+
 	]
+
+

@@ -630,6 +630,16 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.ac3transcode.available),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.audio.ac3),true)</visible>
+                          <property name="setting_label">AC3 Transcoding</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.audio.ac3transcode)]</property>
+                          <property name="setting_description">Convert compatible multichannel audio to Dolby Digital AC3 for older TVs, soundbars, ARC, or optical/SPDIF setups.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.toggle_audio_setting&amp;setting_id=audiooutput.ac3transcode)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.audio.eac3.available),true)</visible>
                           <property name="setting_label">Dolby Digital Plus / E-AC3</property>
                           <property name="setting_type">boolean</property>

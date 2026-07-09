@@ -15,6 +15,37 @@ trakt_service_string = 'TraktMonitor Service Update %s - %s'
 trakt_success_line_dict = {'success': 'Trakt Update Performed', 'no account': '(Unauthorized) Trakt Update Performed'}
 update_string = 'Next Update in %s minutes...'
 
+class DeviceCapabilities:
+	def run(self):
+		kodi_utils.logger(
+			'Fen Light',
+			'DeviceCapabilities Service Starting'
+		)
+
+		try:
+			if get_setting(
+				'fenlight.device.auto_video_filter',
+				'true'
+			) == 'true':
+				from modules.device_capabilities import (
+					detect_device_capabilities
+				)
+
+				detect_device_capabilities()
+
+		except Exception as exc:
+			kodi_utils.logger(
+				'Fen Light',
+				'DeviceCapabilities Error: %s'
+				% str(exc)
+			)
+
+		return kodi_utils.logger(
+			'Fen Light',
+			'DeviceCapabilities Service Finished'
+		)
+
+
 class SetAddonConstants:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'SetAddonConstants Service Starting')
@@ -138,6 +169,21 @@ class OnUpdateChanges:
 		from caches.settings_cache import default_setting_values
 		set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])
 		set_setting('extras.enabled', default_setting_values('extras.enabled')['setting_default'])
+	
+	def trakt_watched_progress_update_01(self):
+		from caches.trakt_cache import clear_trakt_activity
+
+		if clear_trakt_activity():
+			kodi_utils.logger(
+				'Fen Light',
+				'Cleared old Trakt activity marker '
+				'for watched progress API update'
+			)
+		else:
+			kodi_utils.logger(
+				'Fen Light',
+				'Could not clear old Trakt activity marker'
+			)
 
 class CustomFonts:
 	def run(self):
@@ -339,6 +385,7 @@ class FenLightMonitor(Monitor):
 		DatabaseMaintenance().run()
 		SyncSettings().run()
 		OnUpdateChanges().run()
+		DeviceCapabilities().run()
 		AddonXMLCheck().run()
 		Thread(target=CustomFonts().run).start()
 		Thread(target=TraktMonitor().run).start()
@@ -359,3 +406,5 @@ class FenLightMonitor(Monitor):
 kodi_utils.logger('Fen Light', 'Main Monitor Service Starting')
 FenLightMonitor().waitForAbort()
 kodi_utils.logger('Fen Light', 'Main Monitor Service Finished')
+
+

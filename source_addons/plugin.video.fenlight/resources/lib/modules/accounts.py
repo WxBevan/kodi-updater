@@ -294,6 +294,7 @@ GUI_SOUND_CHOICES = [
 AUDIO_TOGGLE_SETTINGS = {
     'audiooutput.passthrough': ('audio.passthrough', 'Allow Passthrough'),
     'audiooutput.ac3passthrough': ('audio.ac3', 'Dolby Digital / AC3'),
+    'audiooutput.ac3transcode': ('audio.ac3transcode', 'Dolby Digital / AC3 Transcoding'),
     'audiooutput.eac3passthrough': ('audio.eac3', 'Dolby Digital Plus / E-AC3'),
     'audiooutput.dtspassthrough': ('audio.dts', 'DTS'),
     'audiooutput.truehdpassthrough': ('audio.truehd', 'TrueHD / Atmos'),

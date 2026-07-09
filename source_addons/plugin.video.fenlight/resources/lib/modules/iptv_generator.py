@@ -95,6 +95,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports box office", "skysp box off", "skyspboxoff"],
         "epg_aliases": ["skysp box off", "skyspboxoff"],
         "reject": ["main event", "racing", "news", "premier league", "football", "cricket", "golf", "f1", "tennis"],
+        "enabled_default": False,
     },
     {
         "key": "sky_sports_main_event",
@@ -104,6 +105,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports main event", "skysp main ev", "skyspmainev", "main event"],
         "epg_aliases": ["skysp main ev", "skyspmainev", "SkySpMainEvHD"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "sky_sports_premier_league",
@@ -113,6 +115,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports premier league", "sky sports pl", "skysp pl", "skysppl"],
         "epg_aliases": ["skysp pl", "skysppl"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "sky_sports_football",
@@ -122,6 +125,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports football", "skysp fball", "skyspfball"],
         "epg_aliases": ["skysp fball", "skyspfball"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "sky_sports_cricket",
@@ -131,6 +135,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports cricket", "skysp cricket", "skyspcricket"],
         "epg_aliases": ["skysp cricket", "skyspcricket"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "sky_sports_golf",
@@ -140,6 +145,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports golf", "skysp golf", "skyspgolf"],
         "epg_aliases": ["skysp golf", "skyspgolf"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "sky_sports_f1",
@@ -149,6 +155,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports f1", "skysp f1", "skyspf1"],
         "epg_aliases": ["skysp f1", "skyspf1"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": False,
     },
     {
         "key": "sky_sports_tennis",
@@ -158,6 +165,7 @@ WANTED_CHANNELS = [
         "aliases": ["sky sports tennis", "skysp tennis"],
         "epg_aliases": ["skysp tennis"],
         "reject": ["box office", "racing", "news", "mix", "action", "plus", "+1"],
+        "enabled_default": True,
     },
     {
         "key": "tnt_sports_1",
@@ -167,6 +175,7 @@ WANTED_CHANNELS = [
         "aliases": ["tnt sports 1", "tnt sport 1"],
         "epg_aliases": ["tnt sports 1"],
         "reject": ["box office", "ultimate", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+        "enabled_default": True,
     },
     {
         "key": "tnt_sports_2",
@@ -176,6 +185,7 @@ WANTED_CHANNELS = [
         "aliases": ["tnt sports 2", "tnt sport 2"],
         "epg_aliases": ["tnt sports 2"],
         "reject": ["box office", "ultimate", "1", "3", "4", "5", "6", "7", "8", "9", "10"],
+        "enabled_default": True,
     },
     {
         "key": "tnt_sports_3",
@@ -185,6 +195,7 @@ WANTED_CHANNELS = [
         "aliases": ["tnt sports 3", "tnt sport 3"],
         "epg_aliases": ["tnt sports 3"],
         "reject": ["box office", "ultimate", "1", "2", "4", "5", "6", "7", "8", "9", "10"],
+        "enabled_default": True,
     },
     {
         "key": "tnt_sports_4",
@@ -194,6 +205,7 @@ WANTED_CHANNELS = [
         "aliases": ["tnt sports 4", "tnt sport 4"],
         "epg_aliases": ["tnt sports 4"],
         "reject": ["box office", "ultimate", "1", "2", "3", "5", "6", "7", "8", "9", "10"],
+        "enabled_default": True,
     },
     {
         "key": "mutv",
@@ -202,6 +214,7 @@ WANTED_CHANNELS = [
         "provider_epg_ids": ["mutv.uk"],
         "aliases": ["mutv", "man utd tv", "manchester united tv"],
         "epg_aliases": ["mutv"],
+        "enabled_default": False,
     },
 
     # BBC core
@@ -213,6 +226,7 @@ WANTED_CHANNELS = [
         "aliases": ["bbc one", "bbc one london", "bbc1", "bbc 1"],
         "epg_aliases": ["bbc one london", "bbc one lon", "bbc one hd"],
         "reject": ["cbbc", "cbeebies", "two", "three", "four", "parliament", "scotland", "wales", "alba"],
+        "enabled_default": True,
     },
     {
         "key": "bbc_two",
@@ -222,6 +236,7 @@ WANTED_CHANNELS = [
         "aliases": ["bbc two", "bbc2", "bbc 2"],
         "epg_aliases": ["bbc two hd"],
         "reject": ["one", "three", "four", "parliament", "cbbc", "cbeebies", "alba"],
+        "enabled_default": True,
     },
     {
         "key": "bbc_parliament",
@@ -230,6 +245,7 @@ WANTED_CHANNELS = [
         "provider_epg_ids": ["bbcparliament.uk"],
         "aliases": ["bbc parliament"],
         "epg_aliases": ["bbc parliament"],
+        "enabled_default": True,
     },
     {
         "key": "bbc_one_wales",
@@ -239,48 +255,19 @@ WANTED_CHANNELS = [
         "aliases": ["bbc one wales", "bbc one wal"],
         "epg_aliases": ["bbc one wales", "bbc one wal"],
         "reject": ["two"],
+        "enabled_default": False,
     },
 
     # ITV core
-    {"key": "itv1", "name": "ITV1", "group": "ITV", "provider_epg_ids": ["itv1.uk"], "aliases": ["itv1", "itv 1"], "epg_aliases": ["itv1 hd"], "reject": ["plus 1", "+1", "itv2", "itv3", "itv4"]},
-    {"key": "itv2", "name": "ITV2", "group": "ITV", "provider_epg_ids": ["itv2.uk"], "aliases": ["itv2", "itv 2"], "epg_aliases": ["itv2 hd"], "reject": ["plus 1", "+1", "itv1", "itv3", "itv4"]},
-    {"key": "itv3", "name": "ITV3", "group": "ITV", "provider_epg_ids": ["itv3.uk"], "aliases": ["itv3", "itv 3"], "epg_aliases": ["itv3 hd"], "reject": ["plus 1", "+1", "itv1", "itv2", "itv4"]},
-    {"key": "itv4", "name": "ITV4", "group": "ITV", "provider_epg_ids": ["itv4.uk"], "aliases": ["itv4", "itv 4"], "epg_aliases": ["itv4 hd"], "reject": ["plus 1", "+1", "itv1", "itv2", "itv3"]},
+    {"key": "itv1", "name": "ITV1", "group": "ITV", "provider_epg_ids": ["itv1.uk"], "aliases": ["itv1", "itv 1"], "epg_aliases": ["itv1 hd"], "reject": ["plus 1", "+1", "itv2", "itv3", "itv4"], "enabled_default": True},
+    {"key": "itv2", "name": "ITV2", "group": "ITV", "provider_epg_ids": ["itv2.uk"], "aliases": ["itv2", "itv 2"], "epg_aliases": ["itv2 hd"], "reject": ["plus 1", "+1", "itv1", "itv3", "itv4"], "enabled_default": True},
+    {"key": "itv3", "name": "ITV3", "group": "ITV", "provider_epg_ids": ["itv3.uk"], "aliases": ["itv3", "itv 3"], "epg_aliases": ["itv3 hd"], "reject": ["plus 1", "+1", "itv1", "itv2", "itv4"], "enabled_default": True},
+    {"key": "itv4", "name": "ITV4", "group": "ITV", "provider_epg_ids": ["itv4.uk"], "aliases": ["itv4", "itv 4"], "epg_aliases": ["itv4 hd"], "reject": ["plus 1", "+1", "itv1", "itv2", "itv3"], "enabled_default": True},
 
     # Channel 4 / 5 core
-    {"key": "channel_4", "name": "Channel 4", "group": "Channel 4 & 5", "provider_epg_ids": ["channel4.uk"], "aliases": ["channel 4"], "epg_aliases": ["channel 4 hd"], "reject": ["plus 1", "+1", "4seven", "film4", "e4", "more4"]},
-    {"key": "channel_5", "name": "Channel 5", "group": "Channel 4 & 5", "provider_epg_ids": ["channel5.uk"], "aliases": ["channel 5"], "epg_aliases": ["channel 5 hd"], "reject": ["plus 1", "+1", "5star", "5usa", "5select", "5action"]},
-    {"key": "e4", "name": "E4", "group": "Channel 4 & 5", "provider_epg_ids": ["e4.uk"], "aliases": ["e4"], "epg_aliases": ["e4 hd"], "reject": ["plus 1", "+1", "extra"]},
+    {"key": "channel_4", "name": "Channel 4", "group": "Channel 4 & 5", "provider_epg_ids": ["channel4.uk"], "aliases": ["channel 4"], "epg_aliases": ["channel 4 hd"], "reject": ["plus 1", "+1", "4seven", "film4", "e4", "more4"], "enabled_default": True},
+    {"key": "channel_5", "name": "Channel 5", "group": "Channel 4 & 5", "provider_epg_ids": ["channel5.uk"], "aliases": ["channel 5"], "epg_aliases": ["channel 5 hd"], "reject": ["plus 1", "+1", "5star", "5usa", "5select", "5action"], "enabled_default": True},
 
-    # Entertainment core
-    {"key": "sky_crime", "name": "Sky Crime", "group": "Entertainment", "provider_epg_ids": ["skycrime.uk"], "aliases": ["sky crime"], "epg_aliases": ["sky crime"], "reject": ["plus 1", "+1"]},
-    {"key": "sky_comedy", "name": "Sky Comedy", "group": "Entertainment", "provider_epg_ids": ["skycomedy.uk"], "aliases": ["sky comedy"], "epg_aliases": ["sky comedy"], "reject": ["cinema"]},
-    {"key": "comedy_central", "name": "Comedy Central", "group": "Entertainment", "provider_epg_ids": ["comedycentral.uk"], "aliases": ["comedy central", "comedycent", "comedycenthd"], "epg_aliases": ["comedy central", "comedycenthd"], "reject": ["plus 1", "+1", "extra", "xtra"]},
-
-    # News
-    {"key": "sky_news", "name": "Sky News", "group": "News", "provider_epg_ids": ["skynews.uk"], "aliases": ["sky news"], "epg_aliases": ["sky news"], "reject": ["arabia", "sports"]},
-    {"key": "gb_news", "name": "GB News", "group": "News", "provider_epg_ids": ["gbnews.uk"], "aliases": ["gb news"], "epg_aliases": ["gb news"]},
-    {"key": "bbc_news", "name": "BBC News", "group": "News", "provider_epg_ids": ["bbcnews.uk"], "aliases": ["bbc news"], "epg_aliases": ["bbc news"]},
-    {"key": "bloomberg", "name": "Bloomberg", "group": "News", "provider_epg_ids": ["bloombergtv.uk"], "aliases": ["bloomberg", "bloomberg tv"], "epg_aliases": ["bloomberg"]},
-
-    # Documentary
-    {"key": "discovery", "name": "Discovery Channel", "group": "Documentary", "provider_epg_ids": ["discoverychannel.uk"], "aliases": ["discovery channel", "discovery"], "epg_aliases": ["discovery hd"], "reject": ["history", "science", "turbo", "plus 1", "+1"]},
-    {"key": "discovery_history", "name": "Discovery History", "group": "Documentary", "provider_epg_ids": ["discoveryhistory.uk"], "aliases": ["discovery history", "disc history"], "epg_aliases": ["disc history"], "reject": ["plus 1", "+1"]},
-    {"key": "discovery_science", "name": "Discovery Science", "group": "Documentary", "provider_epg_ids": ["discoveryscience.uk"], "aliases": ["discovery science", "disc science", "disc sci"], "epg_aliases": ["disc science", "disc sci"], "reject": ["plus 1", "+1"]},
-    {"key": "animal_planet", "name": "Animal Planet", "group": "Documentary", "provider_epg_ids": ["animalplanet.uk"], "aliases": ["animal planet", "animal plnt"], "epg_aliases": ["animal planet", "animal plnt"], "reject": ["plus 1", "+1"]},
-    {"key": "nat_geo", "name": "National Geographic", "group": "Documentary", "provider_epg_ids": ["natgeo.uk"], "aliases": ["national geographic", "nat geo"], "epg_aliases": ["nat geo hd"], "reject": ["wild", "plus 1", "+1"]},
-    {"key": "nat_geo_wild", "name": "Nat Geo Wild", "group": "Documentary", "provider_epg_ids": ["natgeowild.uk"], "aliases": ["nat geo wild", "natgeowild", "national geographic wild"], "epg_aliases": ["nat geo wild", "natgeowild"]},
-    {"key": "sky_documentaries", "name": "Sky Documentaries", "group": "Documentary", "provider_epg_ids": ["skydocumentaries.uk"], "aliases": ["sky documentaries"], "epg_aliases": ["sky documentaries"]},
-    {"key": "sky_history", "name": "Sky History", "group": "Documentary", "provider_epg_ids": ["skyhistory.uk"], "aliases": ["sky history", "skyhistory"], "epg_aliases": ["sky history", "skyhistory"], "reject": ["history 2", "history2", "plus 1", "+1"]},
-
-    # Music
-    {"key": "mtv", "name": "MTV", "group": "Music", "provider_epg_ids": ["mtv.uk"], "aliases": ["mtv"], "epg_aliases": ["mtv hd"], "reject": ["80s", "90s", "hits", "music"]},
-    {"key": "now_80s", "name": "NOW 80s", "group": "Music", "provider_epg_ids": ["now80s.uk"], "aliases": ["now 80s"], "epg_aliases": ["now 80s"]},
-    {"key": "now_90s", "name": "NOW 90s", "group": "Music", "provider_epg_ids": ["now90s.uk"], "aliases": ["now 90s", "now 90s00s"], "epg_aliases": ["now 90s", "now 90s00s"], "reject": ["80s", "70s"]},
-
-    # Kids
-    {"key": "cartoon_network", "name": "Cartoon Network", "group": "Kids", "provider_epg_ids": ["cartoonnetwork.uk"], "aliases": ["cartoon network", "cartoon net", "cartoon netwrk"], "epg_aliases": ["cartoon network", "cartoon net", "cartoon netwrk"], "reject": ["plus 1", "+1", "cartoonito"]},
-    {"key": "nickelodeon", "name": "Nickelodeon", "group": "Kids", "provider_epg_ids": ["nickelodeon.uk"], "aliases": ["nickelodeon"], "epg_aliases": ["nickelodeon"], "reject": ["plus 1", "+1", "nick jr", "nicktoons"]},
 ]
 
 
@@ -2354,13 +2341,17 @@ AUTO_UK_REJECT_TERMS = [
 
 
 def _enabled_default_for_channel(key, section, xmltv_id, is_core=False):
-    if section in {'Kids', 'Non-UK Extras'}:
+    wanted = CHANNEL_BY_KEY.get(key) or {}
+
+    if wanted.get("enabled_default") is False:
         return False
+
+    if section in {"Kids", "Non-UK Extras", "US Extras"}:
+        return False
+
     if is_core:
         return bool(xmltv_id)
-    # Auto-discovered UK channels should be available in Manage Channels, but not
-    # auto-filled into the guide. This keeps the first generated guide clean while
-    # still letting you enable any UK EPG-matched channel.
+
     return False
 
 

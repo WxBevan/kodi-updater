@@ -640,7 +640,7 @@ def trakt_indicators_tv():
 				insert_append(('episode', tmdb_id, season_no, e['number'], last_watched_at, title))
 	insert_list = []
 	insert_append = insert_list.append
-	params = {'path': 'users/me/watched/shows?extended=full%s', 'with_auth': True, 'pagination': False}
+	params = {'path': 'users/me/watched/shows?extended=progress%s', 'with_auth': True, 'pagination': False}
 	result = get_trakt(params)
 	threads = list(make_thread_list(_process, result))
 	[i.join() for i in threads]

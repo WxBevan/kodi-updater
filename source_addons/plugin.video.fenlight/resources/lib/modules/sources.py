@@ -75,7 +75,7 @@ class Sources():
 		self.include_prerelease_results, self.ignore_results_filter = settings.include_prerelease_results(), settings.ignore_results_filter()
 		self.limit_resolve = settings.limit_resolve()
 		self.weight_size = settings.size_sort_weighted()
-		self.sort_function, self.quality_filter = settings.results_sort_order(), self._quality_filter()
+		self.sort_function, self.quality_filter = settings.results_sort_order(), self._apply_device_quality_filter(self._quality_filter())
 		self.include_unknown_size = get_setting('fenlight.results.size_unknown', 'false') == 'true'
 		self.make_search_info()
 		if self.autoscrape: self.autoscrape_nextep_handler()
@@ -162,6 +162,8 @@ class Sources():
 			results = self.filter_results(results)
 			results = self.filter_audio(results)
 			for file_type in self.filter_keys: results = self.special_filter(results, file_type)
+			results = self.filter_device_capabilities(results)
+
 		results = self.sort_preferred_filters(results)
 		if self.prescrape:
 			self.all_scrapers = self.active_internal_scrapers
@@ -183,6 +185,85 @@ class Sources():
 			'size_rank': self._get_size_rank(i)}) for i in results]
 		results.sort(key=self.sort_function)
 		results = self._sort_uncached_results(results)
+		return results
+	
+	def _apply_device_quality_filter(self, quality_filter):
+		if get_setting(
+			'fenlight.device.auto_resolution_filter',
+			'false'
+		) != 'true':
+			return quality_filter
+
+		max_quality = get_setting(
+			'fenlight.device.detected_max_quality',
+			'unknown'
+		)
+
+		allowed = {
+			'4K': ('SD', '720p', '1080p', '4K'),
+			'1080p': ('SD', '720p', '1080p'),
+			'720p': ('SD', '720p'),
+			'SD': ('SD',)
+		}.get(max_quality)
+
+		if not allowed:
+			return quality_filter
+
+		return [
+			quality
+			for quality in quality_filter
+			if quality in allowed
+			or quality in ('SCR', 'CAM', 'TELE')
+		]
+	
+	def filter_device_capabilities(self, results):
+		if get_setting(
+			'fenlight.device.auto_video_filter',
+			'true'
+		) != 'true':
+			return results
+
+		from modules.device_capabilities import (
+			get_detected_capabilities
+		)
+
+		capabilities = get_detected_capabilities()
+
+		# Do nothing when Kodi could not report the display's
+		# HDR capabilities reliably.
+		if not capabilities['hdr_known']:
+			return results
+
+		supported = capabilities['hdr_types']
+
+		if 'dolbyvision' not in supported:
+			results = [
+				item for item in results
+				if 'D/VISION' not in item.get(
+					'extraInfo',
+					''
+				)
+				or 'HYBRID' in item.get(
+					'extraInfo',
+					''
+				)
+			]
+
+		# Only remove all HDR when none of Kodi's supported HDR
+		# formats are present.
+		if not supported.intersection({
+			'hdr10',
+			'hdr10plus',
+			'hlg'
+		}):
+			results = [
+				item for item in results
+				if 'HDR' not in item.get(
+					'extraInfo',
+					''
+				)
+			]
+
 		return results
 
 	def filter_results(self, results):
