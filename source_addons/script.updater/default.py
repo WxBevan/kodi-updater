@@ -15,9 +15,8 @@ ADDON_ID = "script.updater"
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
-# Binary add-ons can have different versions on Windows, Android and other
-# platforms. For these, installation is verified by presence rather than by
-# comparing against the version listed in this repository's addons.xml.
+# Binary add-ons can have platform-specific versions. Presence is therefore
+# verified, rather than comparing them with the version in this repository.
 PRESENCE_ONLY_ADDONS = {
     "pvr.iptvsimple",
 }
@@ -26,6 +25,11 @@ PROFILE_DIR = xbmcvfs.translatePath(
     f"special://profile/addon_data/{ADDON_ID}"
 )
 BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
+
+# Kodi's repository refresh and automatic updater run asynchronously.
+AUTO_UPDATE_TIMEOUT_SECONDS = 240
+POLL_INTERVAL_SECONDS = 4
+REPOSITORY_REFRESH_INTERVAL_SECONDS = 60
 
 
 def log(message, level=xbmc.LOGINFO):
@@ -47,7 +51,7 @@ def cache_busted_url(url):
     return f"{url}{separator}_={int(time.time())}"
 
 
-def fetch_bytes(url, attempts=3, timeout=20):
+def fetch_bytes(url, attempts=4, timeout=20):
     last_error = None
 
     for attempt in range(1, attempts + 1):
@@ -55,7 +59,7 @@ def fetch_bytes(url, attempts=3, timeout=20):
             request = urllib.request.Request(
                 cache_busted_url(url),
                 headers={
-                    "User-Agent": "Kodi-script.updater/1.0",
+                    "User-Agent": "Kodi-script.updater/1.0.8",
                     "Cache-Control": "no-cache",
                     "Pragma": "no-cache",
                 },
@@ -85,7 +89,6 @@ def get_latest_info():
 def get_repo_versions():
     data = fetch_bytes(ADDONS_XML_URL)
     root = ET.fromstring(data)
-
     versions = {}
 
     for addon in root.findall("addon"):
@@ -98,19 +101,51 @@ def get_repo_versions():
     return versions
 
 
-def get_required_addons(latest_info):
-    result = []
+def get_required_entries(latest_info):
+    """Return unique required add-ons and any exact versions in latest.json.
+
+    Both formats remain supported:
+      "addons": ["plugin.video.fenlight", ...]
+      "addons": [{"id": "plugin.video.fenlight", "version": "2.1.69"}, ...]
+    """
+    entries = []
+    seen = set()
 
     for entry in latest_info.get("addons", []):
         if isinstance(entry, dict):
             addon_id = str(entry.get("id", "")).strip()
+            exact_version = str(entry.get("version", "")).strip() or None
         else:
             addon_id = str(entry).strip()
+            exact_version = None
 
-        if addon_id and addon_id != ADDON_ID and addon_id not in result:
-            result.append(addon_id)
+        if not addon_id or addon_id == ADDON_ID or addon_id in seen:
+            continue
 
-    return result
+        seen.add(addon_id)
+        entries.append((addon_id, exact_version))
+
+    return entries
+
+
+def build_targets(latest_info, repo_versions):
+    targets = {}
+    unavailable = []
+
+    for addon_id, exact_version in get_required_entries(latest_info):
+        if addon_id in PRESENCE_ONLY_ADDONS:
+            targets[addon_id] = None
+            continue
+
+        target_version = exact_version or repo_versions.get(addon_id)
+        if target_version:
+            targets[addon_id] = target_version
+        else:
+            unavailable.append(
+                f"{addon_id} — no target version was found"
+            )
+
+    return targets, unavailable
 
 
 def version_tuple(version):
@@ -136,39 +171,40 @@ def get_installed_version(addon_id):
         return None
 
 
-def addon_is_satisfied(addon_id, target_version):
-    installed_version = get_installed_version(addon_id)
+def get_issues(targets):
+    missing = []
+    outdated = []
 
-    if not installed_version:
-        return False
-
-    if addon_id in PRESENCE_ONLY_ADDONS:
-        return True
-
-    return version_at_least(installed_version, target_version)
-
-
-def build_update_plan(required_addons, repo_versions):
-    updates = []
-    unavailable = []
-
-    for addon_id in required_addons:
-        target_version = repo_versions.get(addon_id)
+    for addon_id, target_version in targets.items():
         installed_version = get_installed_version(addon_id)
 
-        if not target_version:
-            if addon_id in PRESENCE_ONLY_ADDONS and installed_version:
-                continue
-
-            unavailable.append(
-                f"{addon_id} — not found in repository metadata"
-            )
+        if not installed_version:
+            missing.append(addon_id)
             continue
 
-        if not addon_is_satisfied(addon_id, target_version):
-            updates.append((addon_id, target_version, installed_version))
+        if addon_id in PRESENCE_ONLY_ADDONS:
+            continue
 
-    return updates, unavailable
+        if not version_at_least(installed_version, target_version):
+            outdated.append((addon_id, installed_version, target_version))
+
+    return missing, outdated
+
+
+def format_issue_lines(missing, outdated, limit=20):
+    lines = []
+
+    for addon_id in missing:
+        lines.append(f"{addon_id} — not installed")
+
+    for addon_id, installed, target in outdated:
+        lines.append(f"{addon_id} — {installed} → {target}")
+
+    if len(lines) > limit:
+        remaining = len(lines) - limit
+        lines = lines[:limit] + [f"and {remaining} more"]
+
+    return lines
 
 
 def run_builtin(command, wait_ms=1000):
@@ -177,77 +213,56 @@ def run_builtin(command, wait_ms=1000):
     xbmc.sleep(wait_ms)
 
 
-def wait_for_target(addon_id, target_version, timeout_seconds=120):
-    waited = 0
-
-    while waited < timeout_seconds:
-        installed_version = get_installed_version(addon_id)
-
-        if installed_version:
-            if addon_id in PRESENCE_ONLY_ADDONS:
-                return True
-
-            if version_at_least(installed_version, target_version):
-                return True
-
-        xbmc.sleep(2000)
-        waited += 2
-
-    return False
-
-
-def install_addon(addon_id, target_version):
-    # First attempt.
-    run_builtin(f"InstallAddon({addon_id})", 3000)
-
-    if wait_for_target(addon_id, target_version, 90):
-        return True
-
-    # Refresh once more and retry. This helps when Kodi had stale repository
-    # metadata or the first download was interrupted.
-    log(f"Retrying installation of {addon_id}", xbmc.LOGWARNING)
-    run_builtin("UpdateAddonRepos", 10000)
-    run_builtin(f"InstallAddon({addon_id})", 3000)
-
-    return wait_for_target(addon_id, target_version, 120)
-
-
-def final_verification(required_addons, repo_versions):
-    failures = []
-
-    for addon_id in required_addons:
-        target_version = repo_versions.get(addon_id)
-        installed_version = get_installed_version(addon_id)
-
-        if addon_id in PRESENCE_ONLY_ADDONS:
-            if not installed_version:
-                failures.append(f"{addon_id} — not installed")
-            continue
-
-        if not target_version:
-            failures.append(f"{addon_id} — not found in repository metadata")
-            continue
-
-        if not installed_version:
-            failures.append(
-                f"{addon_id} — required {target_version}, installed none"
-            )
-            continue
-
-        if not version_at_least(installed_version, target_version):
-            failures.append(
-                f"{addon_id} — required {target_version}, "
-                f"installed {installed_version}"
-            )
-
-    return failures
-
-
 def close_progress(dialog):
     try:
         dialog.close()
     except Exception:
         pass
+
+
+def wait_for_automatic_updates(dialog, targets):
+    """Wait for Kodi's normal repository updater to install available updates.
+
+    This deliberately does not call InstallAddon(), because that built-in opens
+    a separate confirmation dialog for every add-on. Missing add-ons should be
+    resolved by the complete dependency list in addon.xml when Updater itself
+    is installed or updated.
+    """
+    start = time.monotonic()
+    next_refresh = REPOSITORY_REFRESH_INTERVAL_SECONDS
+
+    while True:
+        missing, outdated = get_issues(targets)
+        if not missing and not outdated:
+            return True, [], []
+
+        elapsed = int(time.monotonic() - start)
+        if elapsed >= AUTO_UPDATE_TIMEOUT_SECONDS:
+            return False, missing, outdated
+
+        if dialog.iscanceled():
+            return None, missing, outdated
+
+        remaining_count = len(missing) + len(outdated)
+        percent = min(92, 15 + int((elapsed / AUTO_UPDATE_TIMEOUT_SECONDS) * 75))
+
+        detail = ""
+        if outdated:
+            detail = outdated[0][0]
+        elif missing:
+            detail = missing[0]
+
+        dialog.update(
+            percent,
+            f"Waiting for Kodi to install updates...\n"
+            f"{remaining_count} remaining: {detail}",
+        )
+
+        if elapsed >= next_refresh:
+            run_builtin("UpdateAddonRepos", 2000)
+            next_refresh += REPOSITORY_REFRESH_INTERVAL_SECONDS
+
+        xbmc.sleep(POLL_INTERVAL_SECONDS * 1000)
 
 
 def install_or_update():
@@ -264,9 +279,9 @@ def install_or_update():
     try:
         latest = get_latest_info()
         latest_build = str(latest.get("build_version", "0.0.0"))
-        required_addons = get_required_addons(latest)
+        required_entries = get_required_entries(latest)
 
-        if not required_addons:
+        if not required_entries:
             close_progress(dialog)
             xbmcgui.Dialog().ok(
                 "Updater",
@@ -275,34 +290,31 @@ def install_or_update():
             return
 
         dialog.update(5, "Refreshing repositories...")
-        run_builtin("UpdateAddonRepos", 10000)
+        run_builtin("UpdateAddonRepos", 12000)
 
-        dialog.update(12, "Reading repository versions...")
+        dialog.update(10, "Reading required versions...")
         repo_versions = get_repo_versions()
-
-        updates, unavailable = build_update_plan(
-            required_addons,
-            repo_versions,
-        )
+        targets, unavailable = build_targets(latest, repo_versions)
 
         if unavailable:
             close_progress(dialog)
             xbmcgui.Dialog().ok(
                 "Updater",
-                "The update cannot continue because some add-ons were not "
-                "found in the repository:\n\n"
+                "The update cannot continue because some required versions "
+                "could not be found:\n\n"
                 + "\n".join(unavailable[:20]),
             )
             return
 
-        failed = []
-        total = len(updates)
+        initial_missing, initial_outdated = get_issues(targets)
 
-        for index, (addon_id, target_version, installed_version) in enumerate(
-            updates,
-            start=1,
-        ):
-            if dialog.iscanceled():
+        if initial_missing or initial_outdated:
+            success, missing, outdated = wait_for_automatic_updates(
+                dialog,
+                targets,
+            )
+
+            if success is None:
                 close_progress(dialog)
                 xbmcgui.Dialog().notification(
                     "Updater",
@@ -312,60 +324,49 @@ def install_or_update():
                 )
                 return
 
-            percent = 15 + int((index / max(total, 1)) * 70)
-            current_text = installed_version or "not installed"
-
-            dialog.update(
-                percent,
-                f"Updating {addon_id}\n{current_text} → {target_version}",
-            )
-
-            if not install_addon(addon_id, target_version):
-                actual_version = get_installed_version(addon_id) or "none"
-                failed.append(
-                    f"{addon_id} — required {target_version}, "
-                    f"installed {actual_version}"
+            if not success:
+                close_progress(dialog)
+                issue_lines = format_issue_lines(missing, outdated)
+                xbmcgui.Dialog().ok(
+                    "Updater",
+                    "Kodi did not finish all automatic add-on updates. "
+                    "The build version was not saved.\n\n"
+                    + "\n".join(issue_lines)
+                    + "\n\nCheck that add-on updates are set to install "
+                    "automatically and that 'Update official add-ons from' "
+                    "is set to 'Any repositories', then run Update again.",
                 )
-                log(f"Failed to update {addon_id}", xbmc.LOGERROR)
+                return
 
-        dialog.update(90, "Refreshing installed add-ons...")
-        run_builtin("UpdateLocalAddons", 5000)
+        dialog.update(94, "Refreshing installed add-ons...")
+        run_builtin("UpdateLocalAddons", 4000)
 
-        dialog.update(95, "Verifying update...")
-        verification_failures = final_verification(
-            required_addons,
-            repo_versions,
-        )
+        dialog.update(97, "Verifying update...")
+        missing, outdated = get_issues(targets)
 
-        failed = sorted(set(failed + verification_failures))
-
-        if failed:
+        if missing or outdated:
             close_progress(dialog)
+            issue_lines = format_issue_lines(missing, outdated)
             xbmcgui.Dialog().ok(
                 "Updater",
-                "The update did not fully complete. The build version was "
-                "not saved.\n\n"
-                + "\n".join(failed[:20])
-                + "\n\nRestart Kodi and run Update again.",
+                "The final version check failed. The build version was not "
+                "saved.\n\n"
+                + "\n".join(issue_lines),
             )
             return
 
-        # The build is recorded only after every required add-on has passed
-        # final version verification.
         write_local_build_version(latest_build)
 
         dialog.update(100, "Update complete.")
         xbmc.sleep(800)
         close_progress(dialog)
 
-        if updates:
-            updated_names = ", ".join(item[0] for item in updates[:6])
-            if len(updates) > 6:
-                updated_names += f" and {len(updates) - 6} more"
-
+        changed = len(initial_missing) + len(initial_outdated)
+        if changed:
             xbmcgui.Dialog().ok(
                 "Updater",
-                f"Update complete.\n\nUpdated: {updated_names}",
+                f"Update complete.\n\n{changed} required add-on(s) were "
+                "installed or updated and every version was verified.",
             )
         else:
             xbmcgui.Dialog().ok(

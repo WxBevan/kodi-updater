@@ -67,7 +67,7 @@ def cache_busted_url(url):
     return f"{url}{separator}_={int(time.time())}"
 
 
-def fetch_bytes(url, attempts=3, timeout=20):
+def fetch_bytes(url, attempts=4, timeout=20):
     last_error = None
 
     for attempt in range(1, attempts + 1):
@@ -75,7 +75,7 @@ def fetch_bytes(url, attempts=3, timeout=20):
             request = urllib.request.Request(
                 cache_busted_url(url),
                 headers={
-                    "User-Agent": "Kodi-script.updater/1.0",
+                    "User-Agent": "Kodi-script.updater/1.0.8",
                     "Cache-Control": "no-cache",
                     "Pragma": "no-cache",
                 },
@@ -105,7 +105,6 @@ def get_latest_info():
 def get_repo_versions():
     data = fetch_bytes(ADDONS_XML_URL)
     root = ET.fromstring(data)
-
     versions = {}
 
     for addon in root.findall("addon"):
@@ -118,19 +117,43 @@ def get_repo_versions():
     return versions
 
 
-def get_required_addons(latest_info):
-    result = []
+def get_required_entries(latest_info):
+    entries = []
+    seen = set()
 
     for entry in latest_info.get("addons", []):
         if isinstance(entry, dict):
             addon_id = str(entry.get("id", "")).strip()
+            exact_version = str(entry.get("version", "")).strip() or None
         else:
             addon_id = str(entry).strip()
+            exact_version = None
 
-        if addon_id and addon_id != ADDON_ID and addon_id not in result:
-            result.append(addon_id)
+        if not addon_id or addon_id == ADDON_ID or addon_id in seen:
+            continue
 
-    return result
+        seen.add(addon_id)
+        entries.append((addon_id, exact_version))
+
+    return entries
+
+
+def build_targets(latest_info, repo_versions):
+    targets = {}
+    unavailable = []
+
+    for addon_id, exact_version in get_required_entries(latest_info):
+        if addon_id in PRESENCE_ONLY_ADDONS:
+            targets[addon_id] = None
+            continue
+
+        target_version = exact_version or repo_versions.get(addon_id)
+        if target_version:
+            targets[addon_id] = target_version
+        else:
+            unavailable.append(addon_id)
+
+    return targets, unavailable
 
 
 def version_tuple(version):
@@ -156,14 +179,12 @@ def get_installed_version(addon_id):
         return None
 
 
-def get_addon_issues(required_addons, repo_versions):
+def get_addon_issues(targets, unavailable):
     missing = []
     outdated = []
-    unavailable = []
 
-    for addon_id in required_addons:
+    for addon_id, target_version in targets.items():
         installed_version = get_installed_version(addon_id)
-        target_version = repo_versions.get(addon_id)
 
         if not installed_version:
             missing.append(addon_id)
@@ -172,16 +193,10 @@ def get_addon_issues(required_addons, repo_versions):
         if addon_id in PRESENCE_ONLY_ADDONS:
             continue
 
-        if not target_version:
-            unavailable.append(addon_id)
-            continue
-
         if not version_at_least(installed_version, target_version):
-            outdated.append(
-                (addon_id, installed_version, target_version)
-            )
+            outdated.append((addon_id, installed_version, target_version))
 
-    return missing, outdated, unavailable
+    return missing, outdated, list(unavailable)
 
 
 def files_differ(source, destination):
@@ -227,34 +242,33 @@ def stay_alive(monitor):
             break
 
 
-def wait_for_first_install(required_addons, repo_versions, monitor):
-    # The service can start while Kodi is still installing dependencies and
-    # switching to Bingie. Give first installation up to three minutes to
-    # settle before deciding that something is genuinely missing.
-    timeout_seconds = 180
+def wait_for_first_install(targets, unavailable, monitor):
+    # The service can start while Kodi is still resolving the dependency list
+    # and switching to Bingie. Give that first installation time to settle.
+    timeout_seconds = 240
     waited = 0
 
     while waited < timeout_seconds and not monitor.abortRequested():
-        missing, outdated, unavailable = get_addon_issues(
-            required_addons,
-            repo_versions,
+        missing, outdated, unavailable_now = get_addon_issues(
+            targets,
+            unavailable,
         )
 
-        if not missing and not outdated and not unavailable:
-            return missing, outdated, unavailable
+        if not missing and not outdated and not unavailable_now:
+            return missing, outdated, unavailable_now
 
         if monitor.waitForAbort(10):
             break
 
         waited += 10
 
-    return get_addon_issues(required_addons, repo_versions)
+    return get_addon_issues(targets, unavailable)
 
 
 def main():
     monitor = xbmc.Monitor()
 
-    # Let Kodi finish startup before touching repositories or showing dialogs.
+    # Let Kodi finish startup, repository checks and dependency installation.
     if monitor.waitForAbort(30):
         return
 
@@ -273,20 +287,19 @@ def main():
         latest_build = str(latest.get("build_version", "0.0.0"))
         message = latest.get("message", "A new update is available.")
         local_build = read_local_build_version()
-        required_addons = get_required_addons(latest)
+        targets, unavailable = build_targets(latest, repo_versions)
 
         if local_build == "0.0.0":
             missing, outdated, unavailable = wait_for_first_install(
-                required_addons,
-                repo_versions,
+                targets,
+                unavailable,
                 monitor,
             )
 
             if monitor.abortRequested():
                 return
 
-            # Fresh install completed successfully. Save the current build as
-            # the baseline without showing a pointless update popup.
+            # A clean first install is the baseline, not an update.
             if not missing and not outdated and not unavailable:
                 write_local_build_version(latest_build)
                 window.setProperty(SESSION_PROPERTY, "true")
@@ -297,8 +310,8 @@ def main():
                 return
         else:
             missing, outdated, unavailable = get_addon_issues(
-                required_addons,
-                repo_versions,
+                targets,
+                unavailable,
             )
 
         build_is_newer = version_tuple(latest_build) > version_tuple(local_build)
@@ -316,7 +329,7 @@ def main():
                 details.append(f"Add-on updates: {len(outdated)}")
 
             if unavailable:
-                details.append(f"Unavailable in repo: {len(unavailable)}")
+                details.append(f"Versions unavailable: {len(unavailable)}")
 
             extra = ""
             if details:
@@ -349,9 +362,7 @@ def main():
             )
 
     except Exception as exc:
-        # Do not set the session property on a failed network/repository check.
-        # A restart will therefore try again instead of treating the check as
-        # completed.
+        # A restart will retry a failed network or repository check.
         log(f"Update check failed: {exc}", xbmc.LOGWARNING)
 
     stay_alive(monitor)
