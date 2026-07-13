@@ -37,47 +37,65 @@ def call_trakt(path, params={}, data=None, is_delete=False, with_auth=True, meth
 			except: expires_at = 0.0
 			if time.time() > expires_at: trakt_refresh_token()
 			token = get_setting('fenlight.trakt.token')
-			if token: headers['Authorization'] = 'Bearer ' + token
+			if token: request_headers['Authorization'] = 'Bearer ' + token
 		try:
 			if method:
 				if method == 'post':
-					resp = requests.post(API_ENDPOINT % path, headers=headers, timeout=10)
+					resp = requests.post(API_ENDPOINT % path, headers=request_headers, timeout=10)
 				elif method == 'delete':
-					resp = requests.delete(API_ENDPOINT % path, headers=headers, timeout=10)
+					resp = requests.delete(API_ENDPOINT % path, headers=request_headers, timeout=10)
 				elif method == 'sort_by_headers':
-					resp = requests.get(API_ENDPOINT % path, params=params, headers=headers, timeout=10)
+					resp = requests.get(API_ENDPOINT % path, params=params, headers=request_headers, timeout=10)
 			elif data is not None:
 				assert not params
-				resp = requests.post(API_ENDPOINT % path, json=data, headers=headers, timeout=10)
-			elif is_delete: resp = requests.delete(API_ENDPOINT % path, headers=headers, timeout=10)
-			else: resp = requests.get(API_ENDPOINT % path, params=params, headers=headers, timeout=10)
+				resp = requests.post(API_ENDPOINT % path, json=data, headers=request_headers, timeout=10)
+			elif is_delete: resp = requests.delete(API_ENDPOINT % path, headers=request_headers, timeout=10)
+			else: resp = requests.get(API_ENDPOINT % path, params=params, headers=request_headers, timeout=10)
 			resp.raise_for_status()
 		except Exception as e: kodi_utils.logger('Trakt Error', str(e))
 		return resp
+
 	API_ENDPOINT = 'https://api.trakt.tv/%s'
 	CLIENT_ID = settings.trakt_client()
 	if CLIENT_ID in (None, 'empty_setting', ''): return no_client_key()
-	headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': CLIENT_ID}
+	request_headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': CLIENT_ID}
+	params = dict(params or {})
 	if pagination: params['page'] = page_no
+
 	response = send_query()
-	try: status_code = response.status_code
-	except: return None
-	headers = response.headers
+	if response is None: return None
+	status_code = response.status_code
+	response_headers = response.headers
+
 	if status_code == 401:
-		if with_auth:
-			if settings.trakt_user_active(): trakt_refresh_token()
-			else: return None
-		else: return None
+		if not with_auth or not settings.trakt_user_active(): return None
+		trakt_refresh_token()
+		response = send_query()
+		if response is None: return None
+		status_code = response.status_code
+		response_headers = response.headers
+		if status_code == 401:
+			kodi_utils.logger('Trakt Error', '401 after token refresh: %s' % path)
+			return None
 	elif status_code == 429:
-		if 'Retry-After' in headers:
-			kodi_utils.sleep(1000 * headers['Retry-After'])
-			response = send_query()
+		try: retry_after = max(1, int(float(response_headers.get('Retry-After', '1'))))
+		except: retry_after = 1
+		kodi_utils.sleep(retry_after * 1000)
+		response = send_query()
+		if response is None: return None
+		status_code = response.status_code
+		response_headers = response.headers
+		if status_code == 429:
+			kodi_utils.logger('Trakt Error', '429 after retry: %s' % path)
+			return None
+
+	if status_code < 200 or status_code >= 300: return None
 	response.encoding = 'utf-8'
-	result = response.json() if 'json' in headers.get('Content-Type', '') else response.text
+	result = response.json() if 'json' in response_headers.get('Content-Type', '') else response.text
 	if method == 'sort_by_headers':
-		try: result = sort_list(headers.get('X-Sort-By', 'title'), headers.get('X-Sort-How', 'asc'), result, settings.ignore_articles())
+		try: result = sort_list(response_headers.get('X-Sort-By', 'title'), response_headers.get('X-Sort-How', 'asc'), result, settings.ignore_articles())
 		except: pass
-	if pagination: return (result, headers.get('X-Pagination-Page-Count', page_no))
+	if pagination: return (result, response_headers.get('X-Pagination-Page-Count', page_no))
 	else: return result
 
 def trakt_get_device_code():

@@ -2,12 +2,9 @@ import difflib
 import gzip
 import json
 import re
-import shutil
-import subprocess
 import sys
 import unicodedata
 import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -1009,6 +1006,9 @@ def epg_match_score(wanted, channel):
 
 
 def find_epg_match(wanted, epg_channels):
+    if not epg_channels:
+        return None, 0, []
+
     override = EPG_ID_OVERRIDES.get(wanted["key"])
     if override:
         for channel in epg_channels:
@@ -1031,7 +1031,6 @@ def find_epg_match(wanted, epg_channels):
         return None, best_score, scored[:5]
 
     return best_channel, best_score, scored[:5]
-
 
 def attach_epg_matches(channels, epg_channels, dropped):
     matched = []
@@ -1110,38 +1109,102 @@ def write_filtered_epg(root, selected_xmltv_ids):
 # =========================
 
 def download_file(url, output_path, description="file"):
+    import time
+    import requests
+
     output_path = Path(output_path)
-    curl = shutil.which("curl.exe") or shutil.which("curl")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = Path(str(output_path) + ".part")
 
-    if output_path.exists():
-        output_path.unlink()
-
-    if curl:
-        command = [curl, "-L", "--fail", "--compressed", url, "-o", str(output_path)]
-        printable_command = [redact_url(part) if part == url else part for part in command]
-        print("Running:", " ".join(printable_command))
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.returncode != 0:
-            details = (result.stderr or result.stdout or "").strip()
-            raise GeneratorError(
-                f"Could not download {description}. Check the server URL and connection.\n{details}"
-            )
-    else:
-        print(f"curl not found. Downloading with Python: {redact_url(url)}")
-        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                output_path.write_bytes(response.read())
-        except Exception as error:
-            raise GeneratorError(
-                f"Could not download {description}. Check the URL and connection.\n{error}"
-            ) from error
-
-    if not output_path.exists() or output_path.stat().st_size == 0:
+    try:
+        if temp_path.exists():
+            temp_path.unlink()
+    except Exception as error:
         raise GeneratorError(
-            f"Could not download {description}. The server returned an empty file: {output_path}"
-        )
+            f"Could not prepare the temporary file for {description}.\n"
+            f"{type(error).__name__}: {error}"
+        ) from error
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 11; Fire TV) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "close"
+    }
+
+    last_error = None
+
+    for attempt in range(1, 4):
+        try:
+            print(
+                f"Downloading {description}, attempt {attempt}/3: "
+                f"{redact_url(url)}"
+            )
+
+            with requests.get(
+                url,
+                headers=headers,
+                stream=True,
+                allow_redirects=True,
+                timeout=(15, 120)
+            ) as response:
+                print(
+                    f"{description} response: "
+                    f"status={response.status_code}, "
+                    f"content-type={response.headers.get('Content-Type', '')}, "
+                    f"url={redact_url(response.url)}"
+                )
+
+                response.raise_for_status()
+
+                with temp_path.open("wb") as output:
+                    for chunk in response.iter_content(chunk_size=131072):
+                        if chunk:
+                            output.write(chunk)
+
+            if not temp_path.exists() or temp_path.stat().st_size == 0:
+                raise GeneratorError(
+                    f"Could not download {description}. "
+                    f"The server returned an empty file."
+                )
+
+            if output_path.exists():
+                output_path.unlink()
+
+            temp_path.replace(output_path)
+
+            print(
+                f"Downloaded {description} successfully: "
+                f"{output_path.stat().st_size} bytes"
+            )
+
+            return
+
+        except Exception as error:
+            last_error = error
+            safe_error = redact_url(str(error))
+
+            print(
+                f"Download attempt {attempt}/3 failed for "
+                f"{description}: {type(error).__name__}: {safe_error}"
+            )
+
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception:
+                pass
+
+            if attempt < 3:
+                time.sleep(attempt * 2)
+
+    safe_error = redact_url(str(last_error))
+
+    raise GeneratorError(
+        f"Could not download {description} after 3 attempts. "
+        f"Check the URL and connection.\n"
+        f"{type(last_error).__name__}: {safe_error}"
+    ) from last_error
 
 def maybe_download_live_streams():
     if DOWNLOAD_LIVE_STREAMS:
@@ -1569,37 +1632,87 @@ def generate(server, username, password):
 
     try:
         return run_generator()
+
     except GeneratorError as error:
-        message = str(error).strip()
+        message = redact_url(str(error).strip())
+
+    except Exception as error:
+        message = redact_url(
+            f"Unexpected IPTV generator error: "
+            f"{type(error).__name__}: {error}"
+        )
+
         try:
-            write_failure_report(message)
+            import traceback
+            traceback_text = traceback.format_exc()
+
+            if xbmc:
+                xbmc.log(
+                    "[FLAM IPTV Generator] Unexpected traceback:\n%s"
+                    % traceback_text,
+                    xbmc.LOGERROR
+                )
+            else:
+                print(traceback_text)
         except Exception:
             pass
 
-        return {
-            "success": False,
-            "error": message,
-            "playlist": str(Path(OUTPUT_FILE)),
-            "epg": str(Path(OUTPUT_EPG_FILE)),
-            "report": str(Path(REPORT_FILE)),
-        }
+    try:
+        if xbmc:
+            xbmc.log(
+                "[FLAM IPTV Generator] %s" % message,
+                xbmc.LOGERROR
+            )
+        else:
+            print(
+                "[FLAM IPTV Generator] %s" % message
+            )
+    except Exception:
+        pass
 
+    try:
+        write_failure_report(message)
+    except Exception:
+        pass
+
+    return {
+        "success": False,
+        "error": message,
+        "playlist": str(Path(OUTPUT_FILE)),
+        "epg": str(Path(OUTPUT_EPG_FILE)),
+        "report": str(Path(REPORT_FILE)),
+    }
 
 def main():
     try:
         run_generator()
+
     except GeneratorError as error:
-        message = str(error).strip()
-        print("")
-        print("Could not generate IPTV files.")
-        print(message)
+        message = redact_url(str(error).strip())
+
+    except Exception as error:
+        message = redact_url(
+            f"Unexpected IPTV generator error: "
+            f"{type(error).__name__}: {error}"
+        )
+
         try:
-            write_failure_report(message)
-            print(f"Failure report written to: {REPORT_FILE}")
+            import traceback
+            print(traceback.format_exc())
         except Exception:
             pass
-        sys.exit(1)
 
+    print("")
+    print("Could not generate IPTV files.")
+    print(message)
+
+    try:
+        write_failure_report(message)
+        print(f"Failure report written to: {REPORT_FILE}")
+    except Exception:
+        pass
+
+    sys.exit(1)
 
 
 # ============================================================================
@@ -3039,9 +3152,6 @@ def _build_extra_groups_fast(extras, streams, previous_states):
     return channels
 
 
-if __name__ == "__main__":
-    main()
-
 
 # ============================================================================
 # FLAM LIVE TV CATALOGUE MODE v4
@@ -4433,3 +4543,6 @@ def play_channel(channel_key):
     xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
     return url
 
+
+if __name__ == "__main__":
+    main()
