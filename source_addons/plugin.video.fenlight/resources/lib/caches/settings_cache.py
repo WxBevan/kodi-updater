@@ -599,8 +599,10 @@ def default_settings():
 {'setting_id': 'device.detected_hdr_types', 'setting_type': 'string', 'setting_default': 'unknown'},
 {'setting_id': 'device.detected_max_quality', 'setting_type': 'string', 'setting_default': 'unknown'},
 {'setting_id': 'device.detected_width', 'setting_type': 'string', 'setting_default': '0'},
-{'setting_id': 'device.detected_height', 'setting_type': 'string', 'setting_default': '0'}
+{'setting_id': 'device.detected_height', 'setting_type': 'string', 'setting_default': '0'},
 
+# Update version cache wipe
+{'setting_id': 'updatechecks.last_cache_wipe_version', 'setting_type': 'string', 'setting_default': '0.0.0'}
 	]
 
 

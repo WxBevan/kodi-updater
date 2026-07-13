@@ -1,45 +1,28 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.updater"
        name="Updater"
-       version="1.0.6"
+       version="1.0.7"
        provider-name="updater">
 
     <requires>
-<!-- Bingie Requirements  -->
-		<import version="5.17.0" addon="xbmc.gui"/>
-		<import addon="script.bingie.helper" version="1.1.2"/>
-		<import addon="script.bingie.toolbox" version="1.0.0"/>
-		<import addon="script.bingie.widgets" version="1.0.1"/>
-		<import addon="script.skinshortcuts" version="2.0.3"/>
-		<import addon="resource.images.studios.coloured" version="1.0.0" />
-		<import addon="plugin.video.tmdb.bingie.helper" version="1.0.1" /> <!-- Can i remove this-->
-		<import addon="plugin.program.autocompletion" version="2.1.3" />
-        <import addon="resource.images.studios.white" version="0.0.0" />
-
-        <!-- Bingie requirements end  -->
-
         <import addon="xbmc.python" version="3.0.0"/>
-
-        <import addon="script.module.cocoscrapers" version="0.0.0"/>
-        <import addon="script.module.jurialmunkey" version="0.0.0"/>
-        <import addon="pvr.iptvsimple" version="0.0.0"/>
-
-        <import addon="plugin.program.autowidget" version="0.0.0"/>
-        <import addon="plugin.video.fenlight" version="0.0.0"/>
-
-        <import addon="service.autostop" version="0.0.0"/>
-
-        <import addon="skin.bingie" version="0.0.0"/>
+        <import addon="xbmc.gui" version="5.17.0"/>
     </requires>
 
-    <extension point="xbmc.python.script" library="default.py" />
-    <extension point="xbmc.service" library="service.py" />
+    <extension point="xbmc.python.script" library="default.py"/>
+    <extension point="xbmc.service" library="service.py"/>
 
     <extension point="xbmc.addon.metadata">
         <summary lang="en_GB">Updater</summary>
-        <description lang="en_GB">Installs and updates the Kodi setup.</description>
+        <description lang="en_GB">Installs, verifies and updates the Kodi setup.</description>
         <platform>all</platform>
         <license>GPL-2.0-or-later</license>
-        <news>Removed repository dependencies and cleaned setup requirements.</news>
+        <news>
+            v1.0.7
+            - Installs missing and outdated add-ons.
+            - Verifies installed versions before saving the build number.
+            - Prevents the update prompt immediately after a successful first install.
+            - Adds network retries and cache-busting for repository files.
+        </news>
     </extension>
 </addon>

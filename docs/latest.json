@@ -1,5 +1,5 @@
 {
-  "build_version": "1.0.10",
+  "build_version": "1.0.11",
   "message": "A new update is available.",
   "addons": [
   
@@ -8,8 +8,7 @@
     "script.bingie.toolbox",
     "script.bingie.widgets",
     "script.skinshortcuts",
-    "resource.images.studios.coloured",
-    "resource.images.studios.white",
+
 
 
     "plugin.video.tmdb.bingie.helper",
@@ -24,6 +23,8 @@
 
     "service.autostop",
 
-    "skin.bingie"
+    "skin.bingie",
+    "resource.images.studios.coloured",
+    "resource.images.studios.white"
   ]
 }

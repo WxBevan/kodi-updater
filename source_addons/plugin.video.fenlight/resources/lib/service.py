@@ -154,6 +154,124 @@ class SyncSettings:
 		sync_settings()
 		return kodi_utils.logger('Fen Light', 'SyncSettings Service Finished')
 
+class VersionedCacheWipe:
+	setting_id = 'updatechecks.last_cache_wipe_version'
+
+	def _version_tuple(self, version):
+		import re
+
+		numbers = tuple(
+			int(part)
+			for part in re.findall(r'\d+', str(version))
+		)
+
+		return numbers or (0,)
+
+	def run(self):
+		kodi_utils.logger(
+			'Fen Light',
+			'VersionedCacheWipe Service Starting'
+		)
+
+		current_version = (
+			kodi_utils.addon_info('version')
+			or '0.0.0'
+		)
+
+		last_wipe_version = get_setting(
+			'fenlight.%s' % self.setting_id,
+			'0.0.0'
+		)
+
+		if (
+			self._version_tuple(current_version)
+			<= self._version_tuple(last_wipe_version)
+		):
+			kodi_utils.logger(
+				'Fen Light',
+				'VersionedCacheWipe Not Needed: '
+				'current=%s, last=%s'
+				% (
+					current_version,
+					last_wipe_version
+				)
+			)
+
+			return kodi_utils.logger(
+				'Fen Light',
+				'VersionedCacheWipe Service Finished'
+			)
+
+		kodi_utils.logger(
+			'Fen Light',
+			'VersionedCacheWipe Required: '
+			'current=%s, last=%s'
+			% (
+				current_version,
+				last_wipe_version
+			)
+		)
+
+		try:
+			from caches.base_cache import connect_database
+			from caches.main_cache import main_cache
+			from caches.lists_cache import lists_cache
+			from caches.tmdb_lists import tmdb_lists_cache
+			from caches.trakt_cache import (
+				clear_all_trakt_cache_data
+			)
+
+			results = [
+				main_cache.delete_all(),
+				lists_cache.delete_all_lists(),
+				tmdb_lists_cache.clear_all(),
+				clear_all_trakt_cache_data(
+					silent=True,
+					refresh=False
+				)
+			]
+
+			dbcon = connect_database(
+				'random_widgets_db'
+			)
+
+			try:
+				dbcon.execute(
+					'DELETE FROM random_widgets'
+				)
+				dbcon.execute('VACUUM')
+			finally:
+				dbcon.close()
+
+			if False in results:
+				raise RuntimeError(
+					'One or more caches could not be cleared'
+				)
+
+			set_setting(
+				self.setting_id,
+				current_version
+			)
+
+			kodi_utils.logger(
+				'Fen Light',
+				'VersionedCacheWipe Complete: '
+				'stored version=%s'
+				% current_version
+			)
+
+		except Exception as exc:
+			kodi_utils.logger(
+				'Fen Light',
+				'VersionedCacheWipe Error: %s'
+				% str(exc)
+			)
+
+		return kodi_utils.logger(
+			'Fen Light',
+			'VersionedCacheWipe Service Finished'
+		)
+
 class OnUpdateChanges:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'OnUpdateChanges Service Starting')
@@ -384,6 +502,7 @@ class FenLightMonitor(Monitor):
 		DebridCacheWipe().run()
 		DatabaseMaintenance().run()
 		SyncSettings().run()
+		VersionedCacheWipe().run()
 		OnUpdateChanges().run()
 		DeviceCapabilities().run()
 		AddonXMLCheck().run()

@@ -1,39 +1,46 @@
 import json
 import os
+import re
+import shutil
+import time
 import urllib.request
+import xml.etree.ElementTree as ET
 
 import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcvfs
-import shutil
 
 
 ADDON_ID = "script.updater"
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
+ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
 SESSION_PROPERTY = f"{ADDON_ID}.checked_this_session"
 
-KEYMAP_SOURCE = "special://home/addons/script.updater/resources/keymaps/stop_back.xml"
-KEYMAP_DEST = "special://profile/keymaps/kodi_updater_stop_back.xml"
+KEYMAP_SOURCE = (
+    "special://home/addons/script.updater/resources/keymaps/stop_back.xml"
+)
+KEYMAP_DEST = (
+    "special://profile/keymaps/kodi_updater_stop_back.xml"
+)
+
+PRESENCE_ONLY_ADDONS = {
+    "pvr.iptvsimple",
+}
+
+PROFILE_DIR = xbmcvfs.translatePath(
+    f"special://profile/addon_data/{ADDON_ID}"
+)
+BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
+
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log(f"[{ADDON_ID}] {message}", level)
 
 
-def translate(path):
-    return xbmcvfs.translatePath(path)
-
-
-PROFILE_DIR = translate(f"special://profile/addon_data/{ADDON_ID}")
-BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
-
-
-def version_tuple(version):
-    try:
-        return tuple(int(part) for part in str(version).split("."))
-    except Exception:
-        return (0, 0, 0)
+def ensure_profile_dir():
+    os.makedirs(PROFILE_DIR, exist_ok=True)
 
 
 def read_local_build_version():
@@ -43,33 +50,175 @@ def read_local_build_version():
 
         with open(BUILD_VERSION_FILE, "r", encoding="utf-8") as file:
             return file.read().strip() or "0.0.0"
-    except Exception:
+    except Exception as exc:
+        log(f"Could not read local build version: {exc}", xbmc.LOGWARNING)
         return "0.0.0"
 
 
+def write_local_build_version(version):
+    ensure_profile_dir()
+
+    with open(BUILD_VERSION_FILE, "w", encoding="utf-8") as file:
+        file.write(str(version))
+
+
+def cache_busted_url(url):
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}_={int(time.time())}"
+
+
+def fetch_bytes(url, attempts=3, timeout=20):
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            request = urllib.request.Request(
+                cache_busted_url(url),
+                headers={
+                    "User-Agent": "Kodi-script.updater/1.0",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                },
+            )
+
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+
+        except Exception as exc:
+            last_error = exc
+            log(
+                f"Download attempt {attempt}/{attempts} failed for {url}: {exc}",
+                xbmc.LOGWARNING,
+            )
+
+            if attempt < attempts:
+                xbmc.sleep(3000)
+
+    raise last_error
+
+
 def get_latest_info():
-    with urllib.request.urlopen(LATEST_URL, timeout=10) as response:
-        return json.loads(response.read().decode("utf-8"))
+    data = fetch_bytes(LATEST_URL)
+    return json.loads(data.decode("utf-8-sig"))
+
+
+def get_repo_versions():
+    data = fetch_bytes(ADDONS_XML_URL)
+    root = ET.fromstring(data)
+
+    versions = {}
+
+    for addon in root.findall("addon"):
+        addon_id = addon.attrib.get("id", "").strip()
+        version = addon.attrib.get("version", "").strip()
+
+        if addon_id and version:
+            versions[addon_id] = version
+
+    return versions
 
 
 def get_required_addons(latest_info):
-    addons = latest_info.get("addons", [])
-    return [str(addon_id).strip() for addon_id in addons if str(addon_id).strip()]
+    result = []
+
+    for entry in latest_info.get("addons", []):
+        if isinstance(entry, dict):
+            addon_id = str(entry.get("id", "")).strip()
+        else:
+            addon_id = str(entry).strip()
+
+        if addon_id and addon_id != ADDON_ID and addon_id not in result:
+            result.append(addon_id)
+
+    return result
 
 
-def is_addon_installed(addon_id):
+def version_tuple(version):
+    numbers = tuple(int(part) for part in re.findall(r"\d+", str(version)))
+    return numbers or (0,)
+
+
+def version_at_least(installed_version, target_version):
+    installed = version_tuple(installed_version)
+    target = version_tuple(target_version)
+    length = max(len(installed), len(target))
+
+    installed += (0,) * (length - len(installed))
+    target += (0,) * (length - len(target))
+
+    return installed >= target
+
+
+def get_installed_version(addon_id):
     try:
-        xbmcaddon.Addon(addon_id)
-        return True
+        return xbmcaddon.Addon(addon_id).getAddonInfo("version") or None
     except Exception:
-        return False
+        return None
 
 
-def get_missing_addons(addons):
-    return [
-        addon_id for addon_id in addons
-        if not is_addon_installed(addon_id)
-    ]
+def get_addon_issues(required_addons, repo_versions):
+    missing = []
+    outdated = []
+    unavailable = []
+
+    for addon_id in required_addons:
+        installed_version = get_installed_version(addon_id)
+        target_version = repo_versions.get(addon_id)
+
+        if not installed_version:
+            missing.append(addon_id)
+            continue
+
+        if addon_id in PRESENCE_ONLY_ADDONS:
+            continue
+
+        if not target_version:
+            unavailable.append(addon_id)
+            continue
+
+        if not version_at_least(installed_version, target_version):
+            outdated.append(
+                (addon_id, installed_version, target_version)
+            )
+
+    return missing, outdated, unavailable
+
+
+def files_differ(source, destination):
+    if not os.path.exists(destination):
+        return True
+
+    try:
+        with open(source, "rb") as source_file:
+            source_data = source_file.read()
+
+        with open(destination, "rb") as destination_file:
+            destination_data = destination_file.read()
+
+        return source_data != destination_data
+    except Exception:
+        return True
+
+
+def install_stop_back_keymap():
+    try:
+        source = xbmcvfs.translatePath(KEYMAP_SOURCE)
+        destination = xbmcvfs.translatePath(KEYMAP_DEST)
+        destination_dir = os.path.dirname(destination)
+
+        if not os.path.exists(source):
+            log(f"Stop-back keymap source missing: {source}", xbmc.LOGWARNING)
+            return
+
+        os.makedirs(destination_dir, exist_ok=True)
+
+        if files_differ(source, destination):
+            shutil.copy2(source, destination)
+            log("Installed stop-back keymap.")
+            xbmc.executebuiltin("Action(reloadkeymaps)")
+
+    except Exception as exc:
+        log(f"Failed to install stop-back keymap: {exc}", xbmc.LOGWARNING)
 
 
 def stay_alive(monitor):
@@ -78,33 +227,37 @@ def stay_alive(monitor):
             break
 
 
-def install_stop_back_keymap():
-    try:
-        source = xbmcvfs.translatePath(KEYMAP_SOURCE)
-        dest = xbmcvfs.translatePath(KEYMAP_DEST)
-        dest_dir = os.path.dirname(dest)
+def wait_for_first_install(required_addons, repo_versions, monitor):
+    # The service can start while Kodi is still installing dependencies and
+    # switching to Bingie. Give first installation up to three minutes to
+    # settle before deciding that something is genuinely missing.
+    timeout_seconds = 180
+    waited = 0
 
-        if not os.path.exists(dest_dir):
-            os.makedirs(dest_dir)
+    while waited < timeout_seconds and not monitor.abortRequested():
+        missing, outdated, unavailable = get_addon_issues(
+            required_addons,
+            repo_versions,
+        )
 
-        if os.path.exists(source):
-            shutil.copy2(source, dest)
-            log("Installed stop-back keymap.")
-            xbmc.executebuiltin("Action(reloadkeymaps)")
-        else:
-            log(f"Stop-back keymap source missing: {source}", xbmc.LOGWARNING)
+        if not missing and not outdated and not unavailable:
+            return missing, outdated, unavailable
 
-    except Exception as exc:
-        log(f"Failed to install stop-back keymap: {exc}", xbmc.LOGWARNING)
+        if monitor.waitForAbort(10):
+            break
 
+        waited += 10
+
+    return get_addon_issues(required_addons, repo_versions)
 
 
 def main():
     monitor = xbmc.Monitor()
 
-    if monitor.waitForAbort(15):
+    # Let Kodi finish startup before touching repositories or showing dialogs.
+    if monitor.waitForAbort(30):
         return
-    
+
     install_stop_back_keymap()
 
     window = xbmcgui.Window(10000)
@@ -113,40 +266,70 @@ def main():
         stay_alive(monitor)
         return
 
-    window.setProperty(SESSION_PROPERTY, "true")
-
     try:
         latest = get_latest_info()
+        repo_versions = get_repo_versions()
 
-        latest_version = latest.get("build_version", "0.0.0")
+        latest_build = str(latest.get("build_version", "0.0.0"))
         message = latest.get("message", "A new update is available.")
-        local_version = read_local_build_version()
-
+        local_build = read_local_build_version()
         required_addons = get_required_addons(latest)
-        missing_addons = get_missing_addons(required_addons)
 
-        version_is_newer = version_tuple(latest_version) > version_tuple(local_version)
-        required_addons_missing = len(missing_addons) > 0
+        if local_build == "0.0.0":
+            missing, outdated, unavailable = wait_for_first_install(
+                required_addons,
+                repo_versions,
+                monitor,
+            )
 
-        if version_is_newer or required_addons_missing:
-            extra = ""
+            if monitor.abortRequested():
+                return
 
-            if required_addons_missing:
-                extra = (
-                    "\n\nSome required add-ons are missing and need to be installed."
-                    f"\nMissing: {len(missing_addons)}"
+            # Fresh install completed successfully. Save the current build as
+            # the baseline without showing a pointless update popup.
+            if not missing and not outdated and not unavailable:
+                write_local_build_version(latest_build)
+                window.setProperty(SESSION_PROPERTY, "true")
+                log(
+                    f"First install complete. Saved build version {latest_build}."
                 )
+                stay_alive(monitor)
+                return
+        else:
+            missing, outdated, unavailable = get_addon_issues(
+                required_addons,
+                repo_versions,
+            )
 
-            dialog = xbmcgui.Dialog()
+        build_is_newer = version_tuple(latest_build) > version_tuple(local_build)
+        addon_issues_exist = bool(missing or outdated or unavailable)
 
-            should_update = dialog.yesno(
+        window.setProperty(SESSION_PROPERTY, "true")
+
+        if build_is_newer or addon_issues_exist:
+            details = []
+
+            if missing:
+                details.append(f"Missing add-ons: {len(missing)}")
+
+            if outdated:
+                details.append(f"Add-on updates: {len(outdated)}")
+
+            if unavailable:
+                details.append(f"Unavailable in repo: {len(unavailable)}")
+
+            extra = ""
+            if details:
+                extra = "\n\n" + "\n".join(details)
+
+            should_update = xbmcgui.Dialog().yesno(
                 "A new update is available",
                 f"{message}\n\n"
-                f"Installed version: {local_version}\n"
-                f"Available version: {latest_version}"
+                f"Installed build: {local_build}\n"
+                f"Available build: {latest_build}"
                 f"{extra}",
                 nolabel="Later",
-                yeslabel="Update"
+                yeslabel="Update",
             )
 
             if should_update:
@@ -154,16 +337,21 @@ def main():
                     "Updater",
                     "Starting update...",
                     xbmcgui.NOTIFICATION_INFO,
-                    3000
+                    3000,
                 )
-                xbmc.executebuiltin(f"RunScript({ADDON_ID},mode=update)")
+                xbmc.executebuiltin(f"RunScript({ADDON_ID})")
             else:
                 log("User selected Later.")
 
         else:
-            log(f"No update needed. Local={local_version}, Latest={latest_version}")
+            log(
+                f"No update needed. Local={local_build}, Latest={latest_build}"
+            )
 
     except Exception as exc:
+        # Do not set the session property on a failed network/repository check.
+        # A restart will therefore try again instead of treating the check as
+        # completed.
         log(f"Update check failed: {exc}", xbmc.LOGWARNING)
 
     stay_alive(monitor)
