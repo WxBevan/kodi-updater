@@ -1168,9 +1168,6 @@ def download_file(url, output_path, description="file"):
                     f"The server returned an empty file."
                 )
 
-            if output_path.exists():
-                output_path.unlink()
-
             temp_path.replace(output_path)
 
             print(
@@ -3166,7 +3163,7 @@ EPG_US_GZ_FILE = str(IPTV_CACHE_DIR / "epg_ripper_US2.xml.gz")
 # file internally and still write one small filtered IPTV-EPG.xml for IPTV Simple.
 EPG_ALL_URL = "https://epgshare01.online/epgshare01/epg_ripper_ALL_SOURCES1.xml.gz"
 EPG_ALL_GZ_FILE = str(IPTV_CACHE_DIR / "epg_ripper_ALL_SOURCES1.xml.gz")
-USE_ALL_SOURCES_US_FALLBACK = True
+USE_ALL_SOURCES_US_FALLBACK = False
 
 EPG_SOURCES = {
     "uk": {
@@ -3316,6 +3313,14 @@ def _region_from_epg_id(epg_id):
     if re.search(r"\.uk\d*$", epg_id):
         return "uk"
     return "uk"
+
+
+def _is_us_epg_id(epg_id):
+    return bool(re.search(r"\.us\d*$", clean(epg_id).lower()))
+
+
+def _strip_us_epg_suffix(epg_id):
+    return re.sub(r"\.us\d*$", "", clean(epg_id), flags=re.I)
 
 
 def _region_for_wanted(wanted):
@@ -3634,7 +3639,7 @@ def _is_useful_us_candidate(item):
     if not _is_usable_live_stream(item):
         return False
     epg = get_provider_epg(item)
-    if not epg.endswith(".us"):
+    if not _is_us_epg_id(epg):
         return False
     search = normalise_text(" ".join([get_stream_name(item), _clean_category(item), epg]))
     compact = compact_text(search)
@@ -3648,13 +3653,13 @@ def _infer_us_extra_name(provider_epg, best_item):
     name = _strip_quality_words(display_name(dict(best_item)))
     name = re.sub(r"(?i)^(US|USA|VIP|SPORTS|LIVE)\s*[:\-]+\s*", "", name).strip(" :-")
     if not name:
-        base = provider_epg.replace(".us", "")
+        base = _strip_us_epg_suffix(provider_epg)
         name = re.sub(r"[^a-zA-Z0-9]+", " ", base).strip()
     return _title_keep_acronyms(name)
 
 
 def _auto_us_key(provider_epg, fallback_name=""):
-    base = provider_epg.lower().replace(".us", "") or fallback_name.lower()
+    base = _strip_us_epg_suffix(provider_epg).lower() or fallback_name.lower()
     base = normalise_text(base)
     base = re.sub(r"[^a-z0-9]+", "_", base).strip("_")
     if not base:
@@ -3663,7 +3668,7 @@ def _auto_us_key(provider_epg, fallback_name=""):
 
 
 def _pseudo_wanted_for_us(provider_epg, display_name, variants):
-    aliases = [display_name, provider_epg, provider_epg.replace(".us", "")]
+    aliases = [display_name, provider_epg, _strip_us_epg_suffix(provider_epg)]
     for variant in variants[:6]:
         if variant.get("name"):
             aliases.append(_strip_quality_words(variant.get("name")))
@@ -3777,7 +3782,7 @@ def _wanted_for_curated_extra_epg(extra, variants):
             provider_ids.append(clean(epg_id).lower())
     for variant in variants:
         epg_id = clean(variant.get("provider_epg")).lower()
-        if epg_id.endswith(".us") and epg_id not in provider_ids:
+        if _is_us_epg_id(epg_id) and epg_id not in provider_ids:
             provider_ids.append(epg_id)
 
     aliases = [extra.get("name", "")] + extra.get("aliases", []) + hint.get("aliases", [])
@@ -3786,7 +3791,7 @@ def _wanted_for_curated_extra_epg(extra, variants):
             aliases.append(_safe_kodi_display_text(_strip_quality_words(variant.get("name"))))
         if variant.get("provider_epg"):
             aliases.append(variant.get("provider_epg"))
-            aliases.append(variant.get("provider_epg").replace(".us", ""))
+            aliases.append(_strip_us_epg_suffix(variant.get("provider_epg")))
 
     # De-duplicate while preserving order.
     seen = set()
