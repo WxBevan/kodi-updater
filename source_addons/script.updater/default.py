@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -12,11 +13,10 @@ import xbmcvfs
 
 
 ADDON_ID = "script.updater"
+BUNDLE_ID = "script.flam.bundle"
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
-# Binary add-ons can have platform-specific versions. Presence is therefore
-# verified, rather than comparing them with the version in this repository.
 PRESENCE_ONLY_ADDONS = {
     "pvr.iptvsimple",
 }
@@ -26,14 +26,20 @@ PROFILE_DIR = xbmcvfs.translatePath(
 )
 BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
 
-# Kodi's repository refresh and automatic updater run asynchronously.
-AUTO_UPDATE_TIMEOUT_SECONDS = 240
+INSTALL_TIMEOUT_SECONDS = 420
 POLL_INTERVAL_SECONDS = 4
-REPOSITORY_REFRESH_INTERVAL_SECONDS = 60
+RETRY_AFTER_SECONDS = 210
 
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log(f"[{ADDON_ID}] {message}", level)
+
+
+def updater_version():
+    try:
+        return xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def ensure_profile_dir():
@@ -59,7 +65,7 @@ def fetch_bytes(url, attempts=4, timeout=20):
             request = urllib.request.Request(
                 cache_busted_url(url),
                 headers={
-                    "User-Agent": "Kodi-script.updater/1.0.8",
+                    "User-Agent": f"Kodi-{ADDON_ID}/{updater_version()}",
                     "Cache-Control": "no-cache",
                     "Pragma": "no-cache",
                 },
@@ -102,12 +108,6 @@ def get_repo_versions():
 
 
 def get_required_entries(latest_info):
-    """Return unique required add-ons and any exact versions in latest.json.
-
-    Both formats remain supported:
-      "addons": ["plugin.video.fenlight", ...]
-      "addons": [{"id": "plugin.video.fenlight", "version": "2.1.69"}, ...]
-    """
     entries = []
     seen = set()
 
@@ -220,16 +220,14 @@ def close_progress(dialog):
         pass
 
 
-def wait_for_automatic_updates(dialog, targets):
-    """Wait for Kodi's normal repository updater to install available updates.
+def request_bundle_install():
+    log(f"Requesting Kodi installation of {BUNDLE_ID}")
+    xbmc.executebuiltin(f"InstallAddon({BUNDLE_ID})")
 
-    This deliberately does not call InstallAddon(), because that built-in opens
-    a separate confirmation dialog for every add-on. Missing add-ons should be
-    resolved by the complete dependency list in addon.xml when Updater itself
-    is installed or updated.
-    """
+
+def wait_for_bundle(dialog, targets):
     start = time.monotonic()
-    next_refresh = REPOSITORY_REFRESH_INTERVAL_SECONDS
+    retried = False
 
     while True:
         missing, outdated = get_issues(targets)
@@ -237,44 +235,52 @@ def wait_for_automatic_updates(dialog, targets):
             return True, [], []
 
         elapsed = int(time.monotonic() - start)
-        if elapsed >= AUTO_UPDATE_TIMEOUT_SECONDS:
+        if elapsed >= INSTALL_TIMEOUT_SECONDS:
             return False, missing, outdated
 
-        if dialog.iscanceled():
-            return None, missing, outdated
+        if not retried and elapsed >= RETRY_AFTER_SECONDS:
+            retried = True
+            dialog.update(
+                55,
+                "Updater",
+                "Refreshing repositories and retrying the FLAM bundle...",
+            )
+            run_builtin("UpdateAddonRepos", 10000)
+            request_bundle_install()
 
         remaining_count = len(missing) + len(outdated)
-        percent = min(92, 15 + int((elapsed / AUTO_UPDATE_TIMEOUT_SECONDS) * 75))
-
-        detail = ""
-        if outdated:
-            detail = outdated[0][0]
-        elif missing:
-            detail = missing[0]
-
-        dialog.update(
-            percent,
-            f"Waiting for Kodi to install updates...\n"
-            f"{remaining_count} remaining: {detail}",
+        percent = min(
+            92,
+            10 + int((elapsed / INSTALL_TIMEOUT_SECONDS) * 82),
         )
 
-        if elapsed >= next_refresh:
-            run_builtin("UpdateAddonRepos", 2000)
-            next_refresh += REPOSITORY_REFRESH_INTERVAL_SECONDS
+        detail = outdated[0][0] if outdated else missing[0]
+        dialog.update(
+            percent,
+            "Updater",
+            f"Installing FLAM build... {remaining_count} remaining: {detail}",
+        )
 
         xbmc.sleep(POLL_INTERVAL_SECONDS * 1000)
 
 
 def install_or_update():
+    first_install = any(
+        argument.lower() == "first_install=true"
+        for argument in sys.argv[1:]
+    )
+
+    title = "Installing FLAM" if first_install else "Updating FLAM"
+
     xbmcgui.Dialog().notification(
         "Updater",
-        "Update started",
+        f"{title}...",
         xbmcgui.NOTIFICATION_INFO,
         3000,
     )
 
-    dialog = xbmcgui.DialogProgress()
-    dialog.create("Updater", "Preparing update...")
+    dialog = xbmcgui.DialogProgressBG()
+    dialog.create("Updater", "Preparing FLAM build...")
 
     try:
         latest = get_latest_info()
@@ -282,87 +288,71 @@ def install_or_update():
         required_entries = get_required_entries(latest)
 
         if not required_entries:
-            close_progress(dialog)
-            xbmcgui.Dialog().ok(
-                "Updater",
-                "No required add-ons were listed in latest.json.",
-            )
-            return
+            raise RuntimeError("No required add-ons were listed in latest.json")
 
-        dialog.update(5, "Refreshing repositories...")
+        dialog.update(3, "Updater", "Refreshing repositories...")
         run_builtin("UpdateAddonRepos", 12000)
 
-        dialog.update(10, "Reading required versions...")
+        dialog.update(6, "Updater", "Reading required versions...")
         repo_versions = get_repo_versions()
         targets, unavailable = build_targets(latest, repo_versions)
 
-        if unavailable:
-            close_progress(dialog)
-            xbmcgui.Dialog().ok(
-                "Updater",
-                "The update cannot continue because some required versions "
-                "could not be found:\n\n"
-                + "\n".join(unavailable[:20]),
+        if BUNDLE_ID not in targets:
+            raise RuntimeError(
+                f"{BUNDLE_ID} must be listed in latest.json with its version"
             )
-            return
+
+        if unavailable:
+            raise RuntimeError(
+                "Required versions could not be found:\n"
+                + "\n".join(unavailable[:20])
+            )
 
         initial_missing, initial_outdated = get_issues(targets)
 
         if initial_missing or initial_outdated:
-            success, missing, outdated = wait_for_automatic_updates(
+            dialog.update(8, "Updater", "Starting the FLAM bundle installation...")
+            request_bundle_install()
+
+            success, missing, outdated = wait_for_bundle(
                 dialog,
                 targets,
             )
 
-            if success is None:
-                close_progress(dialog)
-                xbmcgui.Dialog().notification(
-                    "Updater",
-                    "Update cancelled",
-                    xbmcgui.NOTIFICATION_WARNING,
-                    4000,
-                )
-                return
-
             if not success:
-                close_progress(dialog)
                 issue_lines = format_issue_lines(missing, outdated)
-                xbmcgui.Dialog().ok(
-                    "Updater",
-                    "Kodi did not finish all automatic add-on updates. "
-                    "The build version was not saved.\n\n"
+                raise RuntimeError(
+                    "Kodi did not finish the FLAM bundle installation.\n\n"
                     + "\n".join(issue_lines)
-                    + "\n\nCheck that add-on updates are set to install "
-                    "automatically and that 'Update official add-ons from' "
-                    "is set to 'Any repositories', then run Update again.",
                 )
-                return
 
-        dialog.update(94, "Refreshing installed add-ons...")
+        dialog.update(94, "Updater", "Refreshing installed add-ons...")
         run_builtin("UpdateLocalAddons", 4000)
 
-        dialog.update(97, "Verifying update...")
+        dialog.update(97, "Updater", "Verifying the complete build...")
         missing, outdated = get_issues(targets)
 
         if missing or outdated:
-            close_progress(dialog)
             issue_lines = format_issue_lines(missing, outdated)
-            xbmcgui.Dialog().ok(
-                "Updater",
-                "The final version check failed. The build version was not "
-                "saved.\n\n"
-                + "\n".join(issue_lines),
+            raise RuntimeError(
+                "The final version check failed:\n\n"
+                + "\n".join(issue_lines)
             )
-            return
 
         write_local_build_version(latest_build)
 
-        dialog.update(100, "Update complete.")
+        dialog.update(100, "Updater", "FLAM build complete.")
         xbmc.sleep(800)
         close_progress(dialog)
 
         changed = len(initial_missing) + len(initial_outdated)
-        if changed:
+        if first_install:
+            xbmcgui.Dialog().ok(
+                "Updater",
+                "FLAM installation complete. Every required add-on was "
+                "installed and verified.",
+            )
+        elif changed:
             xbmcgui.Dialog().ok(
                 "Updater",
                 f"Update complete.\n\n{changed} required add-on(s) were "
@@ -376,13 +366,18 @@ def install_or_update():
 
     except Exception as exc:
         close_progress(dialog)
-        log(f"Update failed: {exc}", xbmc.LOGERROR)
+        log(f"Install/update failed: {exc}", xbmc.LOGERROR)
+
+        message = (
+            "FLAM installation did not complete. Updater is still installed "
+            "and will retry on the next Kodi startup.\n\n"
+            if first_install
+            else "The update did not complete. The build version was not saved.\n\n"
+        )
 
         xbmcgui.Dialog().ok(
             "Updater",
-            "Update failed. The build version was not saved.\n\n"
-            "Please check the internet connection and try again.\n\n"
-            f"{exc}",
+            message + str(exc),
         )
 
 

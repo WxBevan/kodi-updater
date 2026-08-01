@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="script.flam.bundle"
+       name="FLAM Build Bundle"
+       version="1.0.0"
+       provider-name="WxBevan">
+
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+
+        <import addon="script.bingie.helper" version="1.1.2"/>
+        <import addon="script.bingie.toolbox" version="1.0.0"/>
+        <import addon="script.bingie.widgets" version="1.0.1"/>
+        <import addon="script.skinshortcuts" version="2.1.0"/>
+        <import addon="plugin.video.tmdb.bingie.helper" version="1.0.2"/>
+        <import addon="plugin.program.autocompletion" version="2.1.3"/>
+        <import addon="script.module.cocoscrapers" version="1.0.39"/>
+        <import addon="script.module.jurialmunkey" version="0.2.35"/>
+        <import addon="pvr.iptvsimple" version="0.0.0"/>
+        <import addon="plugin.program.autowidget" version="3.7.0"/>
+        <import addon="plugin.video.fenlight" version="2.1.70"/>
+        <import addon="service.autostop" version="1.0.6"/>
+        <import addon="resource.images.studios.coloured" version="1.0.0012"/>
+        <import addon="resource.images.studios.white" version="0.0.34"/>
+        <import addon="skin.bingie" version="2.0.2"/>
+    </requires>
+
+    <extension point="xbmc.python.script" library="default.py"/>
+
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Installs the complete FLAM build.</summary>
+        <description lang="en_GB">Dependency bundle used by Updater to install and update the complete FLAM setup as one Kodi-managed installation job.</description>
+        <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <news>
+            v1.0.0
+            - Initial FLAM build dependency bundle.
+        </news>
+    </extension>
+</addon>

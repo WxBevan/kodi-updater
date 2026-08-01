@@ -13,6 +13,7 @@ import xbmcvfs
 
 
 ADDON_ID = "script.updater"
+BUNDLE_ID = "script.flam.bundle"
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
@@ -37,6 +38,13 @@ BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log(f"[{ADDON_ID}] {message}", level)
+
+
+def updater_version():
+    try:
+        return xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def ensure_profile_dir():
@@ -75,7 +83,7 @@ def fetch_bytes(url, attempts=4, timeout=20):
             request = urllib.request.Request(
                 cache_busted_url(url),
                 headers={
-                    "User-Agent": "Kodi-script.updater/1.0.8",
+                    "User-Agent": f"Kodi-{ADDON_ID}/{updater_version()}",
                     "Cache-Control": "no-cache",
                     "Pragma": "no-cache",
                 },
@@ -228,7 +236,7 @@ def install_stop_back_keymap():
         os.makedirs(destination_dir, exist_ok=True)
 
         if files_differ(source, destination):
-            shutil.copy2(source, destination)
+            shutil.copyfile(source, destination)
             log("Installed stop-back keymap.")
             xbmc.executebuiltin("Action(reloadkeymaps)")
 
@@ -242,34 +250,16 @@ def stay_alive(monitor):
             break
 
 
-def wait_for_first_install(targets, unavailable, monitor):
-    # The service can start while Kodi is still resolving the dependency list
-    # and switching to Bingie. Give that first installation time to settle.
-    timeout_seconds = 240
-    waited = 0
-
-    while waited < timeout_seconds and not monitor.abortRequested():
-        missing, outdated, unavailable_now = get_addon_issues(
-            targets,
-            unavailable,
-        )
-
-        if not missing and not outdated and not unavailable_now:
-            return missing, outdated, unavailable_now
-
-        if monitor.waitForAbort(10):
-            break
-
-        waited += 10
-
-    return get_addon_issues(targets, unavailable)
+def run_installer(first_install=False):
+    argument = ",first_install=true" if first_install else ""
+    xbmc.executebuiltin(f"RunScript({ADDON_ID}{argument})")
 
 
 def main():
     monitor = xbmc.Monitor()
 
-    # Let Kodi finish startup, repository checks and dependency installation.
-    if monitor.waitForAbort(30):
+    # Let Kodi finish startup and the repository installation settle.
+    if monitor.waitForAbort(10):
         return
 
     install_stop_back_keymap()
@@ -289,17 +279,18 @@ def main():
         local_build = read_local_build_version()
         targets, unavailable = build_targets(latest, repo_versions)
 
-        if local_build == "0.0.0":
-            missing, outdated, unavailable = wait_for_first_install(
-                targets,
-                unavailable,
-                monitor,
+        if BUNDLE_ID not in targets:
+            raise RuntimeError(
+                f"{BUNDLE_ID} is not listed in latest.json or addons.xml"
             )
 
-            if monitor.abortRequested():
-                return
+        missing, outdated, unavailable = get_addon_issues(
+            targets,
+            unavailable,
+        )
 
-            # A clean first install is the baseline, not an update.
+        if local_build == "0.0.0":
+            # A completely satisfied clean install can be recorded immediately.
             if not missing and not outdated and not unavailable:
                 write_local_build_version(latest_build)
                 window.setProperty(SESSION_PROPERTY, "true")
@@ -308,11 +299,13 @@ def main():
                 )
                 stay_alive(monitor)
                 return
-        else:
-            missing, outdated, unavailable = get_addon_issues(
-                targets,
-                unavailable,
-            )
+
+            # Updater is now safely installed. Start one bundle installation job.
+            window.setProperty(SESSION_PROPERTY, "true")
+            log("First install incomplete. Starting FLAM bundle installer.")
+            run_installer(first_install=True)
+            stay_alive(monitor)
+            return
 
         build_is_newer = version_tuple(latest_build) > version_tuple(local_build)
         addon_issues_exist = bool(missing or outdated or unavailable)
@@ -352,7 +345,7 @@ def main():
                     xbmcgui.NOTIFICATION_INFO,
                     3000,
                 )
-                xbmc.executebuiltin(f"RunScript({ADDON_ID})")
+                run_installer(first_install=False)
             else:
                 log("User selected Later.")
 
