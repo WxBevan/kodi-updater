@@ -14,6 +14,8 @@ import xbmcvfs
 
 ADDON_ID = "script.updater"
 BUNDLE_ID = "script.flam.bundle"
+TARGET_SKIN_ID = "skin.bingie"
+
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
@@ -58,8 +60,12 @@ def read_local_build_version():
 
         with open(BUILD_VERSION_FILE, "r", encoding="utf-8") as file:
             return file.read().strip() or "0.0.0"
+
     except Exception as exc:
-        log(f"Could not read local build version: {exc}", xbmc.LOGWARNING)
+        log(
+            f"Could not read local build version: {exc}",
+            xbmc.LOGWARNING,
+        )
         return "0.0.0"
 
 
@@ -94,8 +100,10 @@ def fetch_bytes(url, attempts=4, timeout=20):
 
         except Exception as exc:
             last_error = exc
+
             log(
-                f"Download attempt {attempt}/{attempts} failed for {url}: {exc}",
+                f"Download attempt {attempt}/{attempts} failed "
+                f"for {url}: {exc}",
                 xbmc.LOGWARNING,
             )
 
@@ -156,6 +164,7 @@ def build_targets(latest_info, repo_versions):
             continue
 
         target_version = exact_version or repo_versions.get(addon_id)
+
         if target_version:
             targets[addon_id] = target_version
         else:
@@ -187,6 +196,106 @@ def get_installed_version(addon_id):
         return None
 
 
+def json_rpc(method, params=None):
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+    }
+
+    if params is not None:
+        request["params"] = params
+
+    try:
+        response = xbmc.executeJSONRPC(json.dumps(request))
+        return json.loads(response or "{}")
+
+    except Exception as exc:
+        log(
+            f"JSON-RPC call failed for {method}: {exc}",
+            xbmc.LOGWARNING,
+        )
+        return {}
+
+
+def json_rpc_succeeded(response):
+    return (
+        isinstance(response, dict)
+        and "error" not in response
+        and "result" in response
+    )
+
+
+def ensure_bingie_skin():
+    try:
+        if xbmc.getSkinDir() == TARGET_SKIN_ID:
+            log("Bingie skin is already active.")
+            return True
+
+        if not get_installed_version(TARGET_SKIN_ID):
+            log(
+                "Bingie skin cannot be activated because it is not installed.",
+                xbmc.LOGERROR,
+            )
+            return False
+
+        enable_response = json_rpc(
+            "Addons.SetAddonEnabled",
+            {
+                "addonid": TARGET_SKIN_ID,
+                "enabled": True,
+            },
+        )
+
+        if not json_rpc_succeeded(enable_response):
+            log(
+                "Could not explicitly enable Bingie: "
+                f"{enable_response}",
+                xbmc.LOGWARNING,
+            )
+        else:
+            xbmc.sleep(500)
+
+        response = json_rpc(
+            "Settings.SetSettingValue",
+            {
+                "setting": "lookandfeel.skin",
+                "value": TARGET_SKIN_ID,
+            },
+        )
+
+        if not json_rpc_succeeded(response):
+            log(
+                "Kodi rejected the Bingie skin change: "
+                f"{response}",
+                xbmc.LOGERROR,
+            )
+            return False
+
+        # Allow slower Fire TV devices up to 20 seconds to load Bingie.
+        for _ in range(40):
+            if xbmc.getSkinDir() == TARGET_SKIN_ID:
+                log("Bingie skin activated successfully.")
+                xbmc.executebuiltin("ActivateWindow(Home)")
+                return True
+
+            xbmc.sleep(500)
+
+        log(
+            "Kodi accepted the Bingie skin setting, but Bingie "
+            "did not become active within 20 seconds.",
+            xbmc.LOGERROR,
+        )
+
+    except Exception as exc:
+        log(
+            f"Could not activate Bingie skin: {exc}",
+            xbmc.LOGERROR,
+        )
+
+    return False
+
+
 def get_addon_issues(targets, unavailable):
     missing = []
     outdated = []
@@ -202,7 +311,9 @@ def get_addon_issues(targets, unavailable):
             continue
 
         if not version_at_least(installed_version, target_version):
-            outdated.append((addon_id, installed_version, target_version))
+            outdated.append(
+                (addon_id, installed_version, target_version)
+            )
 
     return missing, outdated, list(unavailable)
 
@@ -219,6 +330,7 @@ def files_differ(source, destination):
             destination_data = destination_file.read()
 
         return source_data != destination_data
+
     except Exception:
         return True
 
@@ -230,7 +342,10 @@ def install_stop_back_keymap():
         destination_dir = os.path.dirname(destination)
 
         if not os.path.exists(source):
-            log(f"Stop-back keymap source missing: {source}", xbmc.LOGWARNING)
+            log(
+                f"Stop-back keymap source missing: {source}",
+                xbmc.LOGWARNING,
+            )
             return
 
         os.makedirs(destination_dir, exist_ok=True)
@@ -241,7 +356,10 @@ def install_stop_back_keymap():
             xbmc.executebuiltin("Action(reloadkeymaps)")
 
     except Exception as exc:
-        log(f"Failed to install stop-back keymap: {exc}", xbmc.LOGWARNING)
+        log(
+            f"Failed to install stop-back keymap: {exc}",
+            xbmc.LOGWARNING,
+        )
 
 
 def stay_alive(monitor):
@@ -252,13 +370,16 @@ def stay_alive(monitor):
 
 def run_installer(first_install=False):
     argument = ",first_install=true" if first_install else ""
-    xbmc.executebuiltin(f"RunScript({ADDON_ID}{argument})")
+    xbmc.executebuiltin(
+        f"RunScript({ADDON_ID}{argument})"
+    )
 
 
 def main():
     monitor = xbmc.Monitor()
 
-    # Let Kodi finish startup and the repository installation settle.
+    # Ten seconds is enough to let Kodi register the updater. default.py
+    # performs its own repository refresh and additional wait before install.
     if monitor.waitForAbort(10):
         return
 
@@ -275,7 +396,10 @@ def main():
         repo_versions = get_repo_versions()
 
         latest_build = str(latest.get("build_version", "0.0.0"))
-        message = latest.get("message", "A new update is available.")
+        message = latest.get(
+            "message",
+            "A new update is available.",
+        )
         local_build = read_local_build_version()
         targets, unavailable = build_targets(latest, repo_versions)
 
@@ -290,25 +414,47 @@ def main():
         )
 
         if local_build == "0.0.0":
-            # A completely satisfied clean install can be recorded immediately.
+            # It is possible for every dependency to finish before the
+            # updater service performs its first check.
             if not missing and not outdated and not unavailable:
+                if not ensure_bingie_skin():
+                    log(
+                        "First install add-ons are complete, but Bingie "
+                        "could not be activated. The service will retry "
+                        "on the next Kodi startup.",
+                        xbmc.LOGWARNING,
+                    )
+                    stay_alive(monitor)
+                    return
+
                 write_local_build_version(latest_build)
                 window.setProperty(SESSION_PROPERTY, "true")
+
                 log(
-                    f"First install complete. Saved build version {latest_build}."
+                    "First install complete. Bingie activated and "
+                    f"build version {latest_build} saved."
                 )
+
                 stay_alive(monitor)
                 return
 
-            # Updater is now safely installed. Start one bundle installation job.
+            # First installation is deliberately automatic. Do not show
+            # the normal update confirmation dialog here.
             window.setProperty(SESSION_PROPERTY, "true")
-            log("First install incomplete. Starting FLAM bundle installer.")
+            log(
+                "First install incomplete. Starting FLAM bundle installer."
+            )
             run_installer(first_install=True)
             stay_alive(monitor)
             return
 
-        build_is_newer = version_tuple(latest_build) > version_tuple(local_build)
-        addon_issues_exist = bool(missing or outdated or unavailable)
+        build_is_newer = (
+            version_tuple(latest_build)
+            > version_tuple(local_build)
+        )
+        addon_issues_exist = bool(
+            missing or outdated or unavailable
+        )
 
         window.setProperty(SESSION_PROPERTY, "true")
 
@@ -322,7 +468,9 @@ def main():
                 details.append(f"Add-on updates: {len(outdated)}")
 
             if unavailable:
-                details.append(f"Versions unavailable: {len(unavailable)}")
+                details.append(
+                    f"Versions unavailable: {len(unavailable)}"
+                )
 
             extra = ""
             if details:
@@ -351,12 +499,16 @@ def main():
 
         else:
             log(
-                f"No update needed. Local={local_build}, Latest={latest_build}"
+                "No update needed. "
+                f"Local={local_build}, Latest={latest_build}"
             )
 
     except Exception as exc:
-        # A restart will retry a failed network or repository check.
-        log(f"Update check failed: {exc}", xbmc.LOGWARNING)
+        # A Kodi restart will retry a failed network or repository check.
+        log(
+            f"Update check failed: {exc}",
+            xbmc.LOGWARNING,
+        )
 
     stay_alive(monitor)
 

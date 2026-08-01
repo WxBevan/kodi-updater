@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+import traceback
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -14,6 +15,8 @@ import xbmcvfs
 
 ADDON_ID = "script.updater"
 BUNDLE_ID = "script.flam.bundle"
+TARGET_SKIN_ID = "skin.bingie"
+
 LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
 ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
 
@@ -48,6 +51,7 @@ def ensure_profile_dir():
 
 def write_local_build_version(version):
     ensure_profile_dir()
+
     with open(BUILD_VERSION_FILE, "w", encoding="utf-8") as file:
         file.write(str(version))
 
@@ -138,6 +142,7 @@ def build_targets(latest_info, repo_versions):
             continue
 
         target_version = exact_version or repo_versions.get(addon_id)
+
         if target_version:
             targets[addon_id] = target_version
         else:
@@ -169,6 +174,107 @@ def get_installed_version(addon_id):
         return xbmcaddon.Addon(addon_id).getAddonInfo("version") or None
     except Exception:
         return None
+
+
+def json_rpc(method, params=None):
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+    }
+
+    if params is not None:
+        request["params"] = params
+
+    try:
+        response = xbmc.executeJSONRPC(json.dumps(request))
+        return json.loads(response or "{}")
+
+    except Exception as exc:
+        log(
+            f"JSON-RPC call failed for {method}: {exc}",
+            xbmc.LOGWARNING,
+        )
+        return {}
+
+
+def json_rpc_succeeded(response):
+    return (
+        isinstance(response, dict)
+        and "error" not in response
+        and "result" in response
+    )
+
+
+def ensure_bingie_skin():
+    try:
+        if xbmc.getSkinDir() == TARGET_SKIN_ID:
+            log("Bingie skin is already active.")
+            return True
+
+        if not get_installed_version(TARGET_SKIN_ID):
+            log(
+                "Bingie skin cannot be activated because it is not installed.",
+                xbmc.LOGERROR,
+            )
+            return False
+
+        enable_response = json_rpc(
+            "Addons.SetAddonEnabled",
+            {
+                "addonid": TARGET_SKIN_ID,
+                "enabled": True,
+            },
+        )
+
+        if not json_rpc_succeeded(enable_response):
+            log(
+                "Could not explicitly enable Bingie: "
+                f"{enable_response}",
+                xbmc.LOGWARNING,
+            )
+        else:
+            xbmc.sleep(500)
+
+        response = json_rpc(
+            "Settings.SetSettingValue",
+            {
+                "setting": "lookandfeel.skin",
+                "value": TARGET_SKIN_ID,
+            },
+        )
+
+        if not json_rpc_succeeded(response):
+            log(
+                "Kodi rejected the Bingie skin change: "
+                f"{response}",
+                xbmc.LOGERROR,
+            )
+            return False
+
+        # Kodi normally changes immediately, but allow slower Fire TV
+        # devices up to 20 seconds to unload Estuary and load Bingie.
+        for _ in range(40):
+            if xbmc.getSkinDir() == TARGET_SKIN_ID:
+                log("Bingie skin activated successfully.")
+                xbmc.executebuiltin("ActivateWindow(Home)")
+                return True
+
+            xbmc.sleep(500)
+
+        log(
+            "Kodi accepted the Bingie skin setting, but Bingie "
+            "did not become active within 20 seconds.",
+            xbmc.LOGERROR,
+        )
+
+    except Exception as exc:
+        log(
+            f"Could not activate Bingie skin: {exc}",
+            xbmc.LOGERROR,
+        )
+
+    return False
 
 
 def get_issues(targets):
@@ -214,6 +320,9 @@ def run_builtin(command, wait_ms=1000):
 
 
 def close_progress(dialog):
+    if dialog is None:
+        return
+
     try:
         dialog.close()
     except Exception:
@@ -231,20 +340,24 @@ def wait_for_bundle(dialog, targets):
 
     while True:
         missing, outdated = get_issues(targets)
+
         if not missing and not outdated:
             return True, [], []
 
         elapsed = int(time.monotonic() - start)
+
         if elapsed >= INSTALL_TIMEOUT_SECONDS:
             return False, missing, outdated
 
         if not retried and elapsed >= RETRY_AFTER_SECONDS:
             retried = True
+
             dialog.update(
                 55,
                 "Updater",
                 "Refreshing repositories and retrying the FLAM bundle...",
             )
+
             run_builtin("UpdateAddonRepos", 10000)
             request_bundle_install()
 
@@ -255,10 +368,12 @@ def wait_for_bundle(dialog, targets):
         )
 
         detail = outdated[0][0] if outdated else missing[0]
+
         dialog.update(
             percent,
             "Updater",
-            f"Installing FLAM build... {remaining_count} remaining: {detail}",
+            f"Installing FLAM build... "
+            f"{remaining_count} remaining: {detail}",
         )
 
         xbmc.sleep(POLL_INTERVAL_SECONDS * 1000)
@@ -271,6 +386,7 @@ def install_or_update():
     )
 
     title = "Installing FLAM" if first_install else "Updating FLAM"
+    dialog = None
 
     xbmcgui.Dialog().notification(
         "Updater",
@@ -279,16 +395,18 @@ def install_or_update():
         3000,
     )
 
-    dialog = xbmcgui.DialogProgressBG()
-    dialog.create("Updater", "Preparing FLAM build...")
-
     try:
+        dialog = xbmcgui.DialogProgressBG()
+        dialog.create("Updater", "Preparing FLAM build...")
+
         latest = get_latest_info()
         latest_build = str(latest.get("build_version", "0.0.0"))
         required_entries = get_required_entries(latest)
 
         if not required_entries:
-            raise RuntimeError("No required add-ons were listed in latest.json")
+            raise RuntimeError(
+                "No required add-ons were listed in latest.json"
+            )
 
         dialog.update(3, "Updater", "Refreshing repositories...")
         run_builtin("UpdateAddonRepos", 12000)
@@ -299,7 +417,8 @@ def install_or_update():
 
         if BUNDLE_ID not in targets:
             raise RuntimeError(
-                f"{BUNDLE_ID} must be listed in latest.json with its version"
+                f"{BUNDLE_ID} must be listed in latest.json "
+                "with its version"
             )
 
         if unavailable:
@@ -311,7 +430,12 @@ def install_or_update():
         initial_missing, initial_outdated = get_issues(targets)
 
         if initial_missing or initial_outdated:
-            dialog.update(8, "Updater", "Starting the FLAM bundle installation...")
+            dialog.update(
+                8,
+                "Updater",
+                "Starting the FLAM bundle installation...",
+            )
+
             request_bundle_install()
 
             success, missing, outdated = wait_for_bundle(
@@ -321,38 +445,79 @@ def install_or_update():
 
             if not success:
                 issue_lines = format_issue_lines(missing, outdated)
+
                 raise RuntimeError(
                     "Kodi did not finish the FLAM bundle installation.\n\n"
                     + "\n".join(issue_lines)
                 )
 
-        dialog.update(94, "Updater", "Refreshing installed add-ons...")
+        dialog.update(
+            94,
+            "Updater",
+            "Refreshing installed add-ons...",
+        )
         run_builtin("UpdateLocalAddons", 4000)
 
-        dialog.update(97, "Updater", "Verifying the complete build...")
+        dialog.update(
+            97,
+            "Updater",
+            "Verifying the complete build...",
+        )
         missing, outdated = get_issues(targets)
 
         if missing or outdated:
             issue_lines = format_issue_lines(missing, outdated)
+
             raise RuntimeError(
                 "The final version check failed:\n\n"
                 + "\n".join(issue_lines)
             )
 
+        changed = len(initial_missing) + len(initial_outdated)
+
+        if first_install:
+            dialog.update(
+                99,
+                "Updater",
+                "Activating Bingie skin...",
+            )
+
+            # Close the Estuary progress window before Kodi unloads it.
+            close_progress(dialog)
+            dialog = None
+
+            if not ensure_bingie_skin():
+                raise RuntimeError(
+                    "Every required add-on was installed and verified, "
+                    "but Kodi could not activate the Bingie skin. "
+                    "The updater will try again on the next Kodi startup."
+                )
+
+            # Do not mark the first installation complete until the skin
+            # has also activated successfully.
+            write_local_build_version(latest_build)
+
+            xbmcgui.Dialog().notification(
+                "Updater",
+                "FLAM installation complete.",
+                xbmcgui.NOTIFICATION_INFO,
+                5000,
+            )
+            return
+
         write_local_build_version(latest_build)
 
-        dialog.update(100, "Updater", "FLAM build complete.")
+        dialog.update(
+            100,
+            "Updater",
+            "FLAM build complete.",
+        )
+
         xbmc.sleep(800)
         close_progress(dialog)
+        dialog = None
 
-        changed = len(initial_missing) + len(initial_outdated)
-        if first_install:
-            xbmcgui.Dialog().ok(
-                "Updater",
-                "FLAM installation complete. Every required add-on was "
-                "installed and verified.",
-            )
-        elif changed:
+        if changed:
             xbmcgui.Dialog().ok(
                 "Updater",
                 f"Update complete.\n\n{changed} required add-on(s) were "
@@ -366,18 +531,18 @@ def install_or_update():
 
     except Exception as exc:
         close_progress(dialog)
-        log(f"Install/update failed: {exc}", xbmc.LOGERROR)
 
-        message = (
-            "FLAM installation did not complete. Updater is still installed "
-            "and will retry on the next Kodi startup.\n\n"
-            if first_install
-            else "The update did not complete. The build version was not saved.\n\n"
+        message = str(exc).strip() or type(exc).__name__
+        log(
+            f"{title} failed: {message}\n{traceback.format_exc()}",
+            xbmc.LOGERROR,
         )
 
         xbmcgui.Dialog().ok(
-            "Updater",
-            message + str(exc),
+            "FLAM installation failed"
+            if first_install
+            else "FLAM update failed",
+            message,
         )
 
 
