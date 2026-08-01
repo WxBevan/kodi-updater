@@ -30,7 +30,7 @@ PROFILE_DIR = xbmcvfs.translatePath(
 BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
 
 INSTALL_TIMEOUT_SECONDS = 420
-POLL_INTERVAL_SECONDS = 4
+POLL_INTERVAL_SECONDS = 2
 RETRY_AFTER_SECONDS = 210
 
 
@@ -170,8 +170,18 @@ def version_at_least(installed_version, target_version):
 
 
 def get_installed_version(addon_id):
+    """Return the installed version without logging exceptions for missing add-ons."""
     try:
-        return xbmcaddon.Addon(addon_id).getAddonInfo("version") or None
+        if not xbmc.getCondVisibility(
+            f"System.HasAddon({addon_id})"
+        ):
+            return None
+
+        return (
+            xbmcaddon.Addon(addon_id).getAddonInfo("version")
+            or None
+        )
+
     except Exception:
         return None
 
@@ -199,11 +209,11 @@ def json_rpc(method, params=None):
 
 
 def json_rpc_succeeded(response):
-    return (
-        isinstance(response, dict)
-        and "error" not in response
-        and "result" in response
-    )
+    if not isinstance(response, dict) or "error" in response:
+        return False
+
+    result = response.get("result")
+    return result is not None and result is not False
 
 
 def ensure_bingie_skin():
@@ -257,7 +267,6 @@ def ensure_bingie_skin():
         for _ in range(40):
             if xbmc.getSkinDir() == TARGET_SKIN_ID:
                 log("Bingie skin activated successfully.")
-                xbmc.executebuiltin("ActivateWindow(Home)")
                 return True
 
             xbmc.sleep(500)
@@ -452,14 +461,7 @@ def install_or_update():
                 )
 
         dialog.update(
-            94,
-            "Updater",
-            "Refreshing installed add-ons...",
-        )
-        run_builtin("UpdateLocalAddons", 4000)
-
-        dialog.update(
-            97,
+            96,
             "Updater",
             "Verifying the complete build...",
         )
