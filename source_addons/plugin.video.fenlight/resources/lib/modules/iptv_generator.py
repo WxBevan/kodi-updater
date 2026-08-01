@@ -1,5 +1,9 @@
+import copy
 import difflib
 import gzip
+import os
+import shutil
+import time
 import json
 import re
 import sys
@@ -46,6 +50,7 @@ INPUT_JSON = str(IPTV_CACHE_DIR / "live_streams.json")
 OUTPUT_FILE = str(IPTV_OUTPUT_DIR / "IPTV.m3u")
 REPORT_FILE = str(IPTV_OUTPUT_DIR / "IPTV-Report.txt")
 OUTPUT_EPG_FILE = str(IPTV_OUTPUT_DIR / "IPTV-EPG.xml")
+CATALOG_EPG_CACHE_FILE = str(IPTV_OUTPUT_DIR / "IPTV-EPG-Catalog.xml")
 OUTPUT_FORMAT = "ts"  # use "m3u8" if you prefer
 
 DOWNLOAD_LIVE_STREAMS = True
@@ -168,7 +173,7 @@ WANTED_CHANNELS = [
         "key": "tnt_sports_1",
         "name": "TNT Sports 1",
         "group": "Sports",
-        "provider_epg_ids": ["tntsports1.uk"],
+        "provider_epg_ids": ["tntsports1.uk", "tntsport1.uk"],
         "aliases": ["tnt sports 1", "tnt sport 1"],
         "epg_aliases": ["tnt sports 1"],
         "reject": ["box office", "ultimate", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
@@ -178,7 +183,7 @@ WANTED_CHANNELS = [
         "key": "tnt_sports_2",
         "name": "TNT Sports 2",
         "group": "Sports",
-        "provider_epg_ids": ["tntsports2.uk"],
+        "provider_epg_ids": ["tntsports2.uk", "tntsport2.uk"],
         "aliases": ["tnt sports 2", "tnt sport 2"],
         "epg_aliases": ["tnt sports 2"],
         "reject": ["box office", "ultimate", "1", "3", "4", "5", "6", "7", "8", "9", "10"],
@@ -188,7 +193,7 @@ WANTED_CHANNELS = [
         "key": "tnt_sports_3",
         "name": "TNT Sports 3",
         "group": "Sports",
-        "provider_epg_ids": ["tntsports3.uk"],
+        "provider_epg_ids": ["tntsports3.uk", "tntsport3.uk"],
         "aliases": ["tnt sports 3", "tnt sport 3"],
         "epg_aliases": ["tnt sports 3"],
         "reject": ["box office", "ultimate", "1", "2", "4", "5", "6", "7", "8", "9", "10"],
@@ -198,7 +203,7 @@ WANTED_CHANNELS = [
         "key": "tnt_sports_4",
         "name": "TNT Sports 4",
         "group": "Sports",
-        "provider_epg_ids": ["tntsports4.uk"],
+        "provider_epg_ids": ["tntsports4.uk", "tntsport4.uk"],
         "aliases": ["tnt sports 4", "tnt sport 4"],
         "epg_aliases": ["tnt sports 4"],
         "reject": ["box office", "ultimate", "1", "2", "3", "5", "6", "7", "8", "9", "10"],
@@ -1787,8 +1792,9 @@ def update_catalog_enabled_states(enabled_keys):
     enabled_keys = set(str(item) for item in enabled_keys)
     for item in catalog.get("channels", []):
         item["enabled"] = item.get("key") in enabled_keys
-    save_catalog(catalog)
-    return rebuild_from_catalog(reload_pvr=True)
+    # Rebuild and validate the catalogue, M3U and EPG together before saving
+    # the changed selection. This preserves the last working set on failure.
+    return rebuild_from_catalog(reload_pvr=True, catalog_override=catalog)
 
 
 def _channel_default_enabled(group_name, xmltv_id):
@@ -2040,8 +2046,36 @@ def _build_wanted_group(wanted, streams, exact_buckets, epg_channels, previous_s
     ), None
 
 
+_VOLATILE_EVENT_PREFIXES = (
+    "live |", "next |", "end |", "ended |", "no event streaming now",
+)
+
+
+def _is_volatile_dynamic_event(item):
+    """Identify temporary event-bank rows that are not stable TV channels."""
+    provider_epg = clean(get_provider_epg(item)).lower()
+    if provider_epg:
+        return False
+
+    raw_name = clean(get_stream_name(item))
+    lower_name = raw_name.lower()
+    normalised = " %s " % normalise_text(raw_name)
+    event_terms = (
+        " ppv ", " espn plus ppv ", " nfhs ppv ", " soccer ppv ",
+        " dazn ppv ", " event replay ", " full event replay ",
+        " 8k exclusive ",
+    )
+    if lower_name.startswith(_VOLATILE_EVENT_PREFIXES) and any(term in normalised for term in event_terms):
+        return True
+    if any(term in normalised for term in (
+        " espn plus ppv ", " nfhs ppv ", " soccer ppv ", " dazn ppv ",
+    )):
+        return True
+    return False
+
+
 def _extra_match_score(extra, item):
-    if is_adult(item) or not get_stream_id(item):
+    if is_adult(item) or not get_stream_id(item) or _is_volatile_dynamic_event(item):
         return -9999
     search = stream_search_text(item)
     aliases = [extra["name"]] + extra.get("aliases", [])
@@ -4133,46 +4167,149 @@ def write_report_from_catalog(catalog, filtered_epg_stats=None):
     Path(REPORT_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def rebuild_from_catalog(reload_pvr=True):
-    timings, mark = _new_timing_tracker()
-    catalog = load_catalog()
-    mark("Load existing catalogue")
-    epg_data = _load_epg_sources(require_uk=True)
-    mark("Load cached EPG sources")
-    _refresh_catalog_extra_epg_metadata(catalog, epg_data)
-    mark("Repair/backfill EPG metadata")
-    catalog = load_catalog()
-    filtered_epg_stats = _write_filtered_epg_for_catalog(catalog, epg_data)
-    mark("Write filtered EPG")
-    write_m3u_from_catalog(catalog)
-    mark("Write M3U")
-    catalog["timings"] = timings
-    catalog["optimisation_version"] = OPTIMISATION_VERSION
-    write_report_from_catalog(catalog, filtered_epg_stats)
-    mark("Write report")
-    iptv_simple_settings = update_iptv_simple_paths()
-    mark("Update IPTV Simple paths")
-    pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
-    mark("Reload PVR" if reload_pvr else "Skip PVR reload")
-    catalog["timings"] = timings
-    write_report_from_catalog(catalog, filtered_epg_stats)
-    enabled = _enabled_channels(catalog)
-    return {
-        "success": True,
-        "playlist": str(Path(OUTPUT_FILE)),
-        "epg": str(Path(OUTPUT_EPG_FILE)),
-        "report": str(Path(REPORT_FILE)),
-        "catalog": str(Path(CATALOG_FILE)),
-        "channels": len(enabled),
-        "catalog_channels": len(catalog.get("channels", [])),
-        "disabled": len(catalog.get("channels", [])) - len(enabled),
-        "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
-        "dropped": len(catalog.get("dropped", [])),
-        "filtered_epg": filtered_epg_stats,
-        "iptv_simple_settings": iptv_simple_settings,
-        "pvr_reload": pvr_reload,
-    }
+def _catalog_epg_enabled_copy(catalog):
+    rebuilt = copy.deepcopy(catalog)
+    for channel in rebuilt.get("channels", []):
+        channel["enabled"] = bool(clean(channel.get("xmltv_id")))
+    return rebuilt
 
+
+def _write_catalog_epg_cache_to_path(catalog, epg_data, path):
+    return _write_epg_to_path(_catalog_epg_enabled_copy(catalog), epg_data, path)
+
+
+def _filter_catalog_epg_cache_to_path(catalog, cache_path, output_path):
+    selected_ids = {
+        clean(channel.get("xmltv_id"))
+        for channel in catalog.get("channels", [])
+        if channel.get("enabled") and clean(channel.get("xmltv_id"))
+    }
+    root = ET.parse(str(cache_path)).getroot()
+    output_root = ET.Element(root.tag, dict(root.attrib))
+    present_ids = set()
+    channel_count = 0
+    programme_count = 0
+
+    for child in list(root):
+        if child.tag == "channel":
+            channel_id = clean(child.get("id"))
+            if channel_id in selected_ids:
+                output_root.append(child)
+                present_ids.add(channel_id)
+                channel_count += 1
+        elif child.tag == "programme" and clean(child.get("channel")) in selected_ids:
+            output_root.append(child)
+            programme_count += 1
+
+    missing = selected_ids - present_ids
+    if missing:
+        raise GeneratorError(
+            "The fast EPG cache is missing %s selected channel(s): %s" % (
+                len(missing), ", ".join(sorted(missing)[:8])
+            )
+        )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = Path(str(output_path) + ".tmp")
+    ET.ElementTree(output_root).write(str(temp), encoding="utf-8", xml_declaration=True)
+    temp.replace(output_path)
+    return "%s channels / %s programmes" % (channel_count, programme_count)
+
+
+def rebuild_from_catalog(reload_pvr=True, catalog_override=None):
+    """Rebuild channel choices using the compact all-catalogue EPG cache."""
+    timings, mark = _new_timing_tracker()
+    catalog = copy.deepcopy(catalog_override) if catalog_override is not None else load_catalog()
+    mark("Load existing catalogue")
+
+    stage_dir = Path(IPTV_OUTPUT_DIR) / (".selection_stage_%s_%s" % (os.getpid(), int(time.time() * 1000)))
+    staged_catalog = _stage_path(stage_dir, "IPTV-Catalog.json")
+    staged_epg = _stage_path(stage_dir, "IPTV-EPG.xml")
+    staged_m3u = _stage_path(stage_dir, "IPTV.m3u")
+    staged_report = _stage_path(stage_dir, "IPTV-Report.txt")
+    staged_cache = _stage_path(stage_dir, "IPTV-EPG-Catalog.xml")
+    cache_final = Path(CATALOG_EPG_CACHE_FILE)
+    cache_was_rebuilt = False
+
+    try:
+        if cache_final.exists():
+            try:
+                filtered_epg_stats = _filter_catalog_epg_cache_to_path(catalog, cache_final, staged_epg)
+                mark("Load/filter catalogue EPG cache")
+            except Exception:
+                epg_data = _load_epg_sources(require_uk=True)
+                mark("Load cached EPG sources")
+                filtered_epg_stats = _write_epg_to_path(catalog, epg_data, staged_epg)
+                _write_catalog_epg_cache_to_path(catalog, epg_data, staged_cache)
+                cache_was_rebuilt = True
+                mark("Rebuild catalogue EPG cache")
+        else:
+            epg_data = _load_epg_sources(require_uk=True)
+            mark("Load cached EPG sources")
+            filtered_epg_stats = _write_epg_to_path(catalog, epg_data, staged_epg)
+            _write_catalog_epg_cache_to_path(catalog, epg_data, staged_cache)
+            cache_was_rebuilt = True
+            mark("Build catalogue EPG cache")
+
+        _write_m3u_to_path(catalog, staged_m3u, Path(OUTPUT_EPG_FILE))
+        mark("Stage M3U")
+
+        report_catalog = copy.deepcopy(catalog)
+        report_catalog["timings"] = timings
+        report_catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+        _write_catalog_path(staged_catalog, catalog)
+        _write_report_to_path(report_catalog, filtered_epg_stats, staged_report)
+        mark("Stage catalogue/report")
+
+        streams = None
+        try:
+            if Path(INPUT_JSON).exists():
+                streams = load_and_validate_live_streams(Path(INPUT_JSON))
+        except Exception:
+            streams = None
+        _validate_staged_generation(catalog, streams, staged_catalog, staged_m3u, staged_epg)
+        mark("Validate staged output")
+
+        stage_map = {
+            Path(OUTPUT_EPG_FILE): staged_epg,
+            Path(OUTPUT_FILE): staged_m3u,
+            Path(CATALOG_FILE): staged_catalog,
+            Path(REPORT_FILE): staged_report,
+        }
+        if cache_was_rebuilt:
+            stage_map[cache_final] = staged_cache
+        _commit_staged_files(stage_map)
+        mark("Commit channel selection")
+
+        iptv_simple_settings = update_iptv_simple_paths()
+        mark("Update IPTV Simple paths")
+        pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
+        mark("Reload PVR" if reload_pvr else "Skip PVR reload")
+
+        report_catalog["timings"] = timings
+        _atomic_final_report(report_catalog, filtered_epg_stats)
+
+        enabled = _enabled_channels(catalog)
+        return {
+            "success": True,
+            "playlist": str(Path(OUTPUT_FILE)),
+            "epg": str(Path(OUTPUT_EPG_FILE)),
+            "report": str(Path(REPORT_FILE)),
+            "catalog": str(Path(CATALOG_FILE)),
+            "channels": len(enabled),
+            "catalog_channels": len(catalog.get("channels", [])),
+            "disabled": len(catalog.get("channels", [])) - len(enabled),
+            "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
+            "dropped": len(catalog.get("dropped", [])),
+            "filtered_epg": filtered_epg_stats,
+            "iptv_simple_settings": iptv_simple_settings,
+            "pvr_reload": pvr_reload,
+            "timings": timings,
+            "epg_cache": "rebuilt" if cache_was_rebuilt else "reused",
+        }
+    finally:
+        shutil.rmtree(str(stage_dir), ignore_errors=True)
 
 def refresh_epg_only(reload_pvr=True, force=True):
     """Redownload EPG source files and rebuild only IPTV-EPG.xml from the existing catalogue."""
@@ -4188,8 +4325,12 @@ def refresh_epg_only(reload_pvr=True, force=True):
     catalog = load_catalog()
     filtered_epg_stats = _write_filtered_epg_for_catalog(catalog, epg_data)
     mark("Write filtered EPG")
+    cache_temp = Path(str(CATALOG_EPG_CACHE_FILE) + ".tmp")
+    _write_catalog_epg_cache_to_path(catalog, epg_data, cache_temp)
+    cache_temp.replace(Path(CATALOG_EPG_CACHE_FILE))
+    mark("Refresh catalogue EPG cache")
     catalog["timings"] = timings
-    catalog["optimisation_version"] = OPTIMISATION_VERSION
+    catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
     write_report_from_catalog(catalog, filtered_epg_stats)
     mark("Write report")
     pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
@@ -4547,6 +4688,559 @@ def play_channel(channel_key):
         pass
     xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
     return url
+
+
+# ============================================================================
+# FLAM LIVE TV HYBRID REFERENCE GENERATION v1
+#
+# Conservative acceleration layer:
+#   * bundled/local references contain no credentials or direct stream URLs
+#   * current account data remains authoritative
+#   * exact inventory -> fast rebuild from verified reference
+#   * small safe changes -> incremental rebuild
+#   * uncertain/new channel identities or EPG definition changes -> full matcher
+#   * output is staged, validated, and committed atomically per file
+# ============================================================================
+
+import copy as _copy
+import hashlib as _hashlib
+import os as _os
+import shutil as _shutil
+import time as _time
+from functools import lru_cache as _lru_cache
+
+try:
+    from modules import iptv_reference_cache as _iptv_ref
+except Exception:
+    try:
+        import iptv_reference_cache as _iptv_ref
+    except Exception:
+        _iptv_ref = None
+
+HYBRID_OPTIMISATION_VERSION = "safe-code-optimisations-v1+display-label-cleanup-v1+hybrid-reference-v2"
+IPTV_BUNDLED_REFERENCE_FILE = Path(__file__).resolve().parents[2] / "data" / "iptv_reference.json"
+
+# Keep the proven v4 builder as the authoritative fallback.
+_FULL_BUILD_CHANNEL_CATALOG_V4 = build_channel_catalog
+
+# Cache repeated normalisation.  The original generator called these helpers
+# millions of times for the same stream/EPG strings on low-power devices.
+_NORMALISE_TEXT_UNCACHED = normalise_text
+
+
+@_lru_cache(maxsize=65536)
+def _normalise_text_cached(value):
+    return _NORMALISE_TEXT_UNCACHED(value)
+
+
+def normalise_text(value):
+    return _normalise_text_cached(clean(value))
+
+
+@_lru_cache(maxsize=65536)
+def _compact_text_cached(value):
+    return re.sub(r"[^a-z0-9]+", "", normalise_text(value))
+
+
+def compact_text(value):
+    return _compact_text_cached(clean(value))
+
+
+def _safe_load_catalog_file(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
+        if isinstance(data, dict) and isinstance(data.get("channels"), list):
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _hybrid_enabled_states(previous_catalog):
+    if not isinstance(previous_catalog, dict):
+        return {}
+    return {
+        str(item.get("key")): bool(item.get("enabled"))
+        for item in previous_catalog.get("channels", [])
+        if item.get("key")
+    }
+
+
+def _hybrid_reference_variant(item, channel, method):
+    wanted = {
+        "name": channel.get("name", ""),
+        "group": channel.get("section", ""),
+    }
+    variant = _stream_to_variant(item, wanted, method=method, match_score="reference")
+    if _iptv_ref is not None:
+        variant["source_fingerprint"] = _iptv_ref.stream_fingerprint(item)
+    return variant
+
+
+def _is_potential_catalog_stream(item):
+    provider_epg = get_provider_epg(item)
+    provider_epg_lower = provider_epg.lower()
+    if provider_epg_lower in CORE_PROVIDER_EPG_IDS:
+        return True
+    if provider_epg_lower.endswith(".uk"):
+        return True
+    if _is_us_epg_id(provider_epg_lower):
+        return _is_useful_us_candidate(item)
+
+    if _is_volatile_dynamic_event(item):
+        return False
+
+    search = " ".join([get_stream_name(item), provider_epg, _clean_category(item)])
+    search_compact = compact_text(search)
+    if "mutv" in search_compact or "manchesterunited" in search_compact:
+        return True
+
+    for extra in EXTRA_CHANNELS:
+        aliases = [extra.get("name", "")] + extra.get("aliases", [])
+        if any(compact_text(alias) and compact_text(alias) in search_compact for alias in aliases):
+            if _extra_match_score(extra, item) >= MIN_STREAM_MATCH_SCORE:
+                return True
+
+    search_norm = normalise_text(search)
+    for pattern_extra in EXTRA_PATTERNS:
+        try:
+            if re.search(pattern_extra.get("pattern", ""), search_norm, re.I):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _safe_merge_duplicate_catalog_channels(catalog):
+    """Merge only objectively identical catalogue rows.
+
+    A merge requires the same XMLTV id plus either the same normalised display
+    name or at least one identical provider stream id.  This safely folds the
+    core/auto TNT aliases and curated/auto NFL/MLB duplicates without merging
+    ambiguous mappings such as National Geographic vs NatGeo Wild.
+    """
+    source_rank = {
+        "core_mapping": 1,
+        "curated_extra": 2,
+        "auto_uk_epg": 3,
+        "auto_us_epg": 4,
+        "pattern_extra": 5,
+    }
+    merged = []
+    merged_count = 0
+
+    for channel in catalog.get("channels", []):
+        xmltv_id = clean(channel.get("xmltv_id"))
+        name_key = compact_text(_strip_quality_words(channel.get("name", "")))
+        stream_ids = {clean(item.get("stream_id")) for item in channel.get("streams", []) if clean(item.get("stream_id"))}
+        target_index = None
+
+        if xmltv_id:
+            for index, existing in enumerate(merged):
+                if clean(existing.get("xmltv_id")) != xmltv_id:
+                    continue
+                existing_name = compact_text(_strip_quality_words(existing.get("name", "")))
+                existing_ids = {clean(item.get("stream_id")) for item in existing.get("streams", []) if clean(item.get("stream_id"))}
+                if (name_key and existing_name == name_key) or (stream_ids and existing_ids and stream_ids & existing_ids):
+                    target_index = index
+                    break
+
+        if target_index is None:
+            merged.append(copy.deepcopy(channel))
+            continue
+
+        existing = merged[target_index]
+        preferred_new = source_rank.get(channel.get("catalog_source"), 50) < source_rank.get(existing.get("catalog_source"), 50)
+        preferred = copy.deepcopy(channel if preferred_new else existing)
+        other = existing if preferred_new else channel
+        preferred["enabled"] = bool(existing.get("enabled") or channel.get("enabled"))
+        preferred["streams"] = _unique_sorted_variants(
+            list(existing.get("streams", [])) + list(channel.get("streams", []))
+        )
+        preferred["stream_count"] = len(preferred["streams"])
+        if not preferred.get("logo"):
+            preferred["logo"] = other.get("logo", "")
+        preferred.setdefault("merged_channel_keys", [])
+        for key in [existing.get("key"), channel.get("key")]:
+            if key and key != preferred.get("key") and key not in preferred["merged_channel_keys"]:
+                preferred["merged_channel_keys"].append(key)
+        merged[target_index] = preferred
+        merged_count += 1
+
+    catalog["channels"] = merged
+    stats = dict(catalog.get("stats") or {})
+    stats["safe_duplicate_channels_merged"] = merged_count
+    stats["core_channels"] = len([c for c in merged if c.get("catalog_source") == "core_mapping"])
+    stats["auto_uk_channels"] = len([c for c in merged if c.get("catalog_source") == "auto_uk_epg"])
+    stats["auto_us_channels"] = len([c for c in merged if c.get("catalog_source") == "auto_us_epg"])
+    stats["curated_extra_channels"] = len([c for c in merged if c.get("catalog_source") == "curated_extra"])
+    stats["pattern_extra_channels"] = len([c for c in merged if c.get("catalog_source") == "pattern_extra"])
+    catalog["stats"] = stats
+    return catalog
+
+
+def _hybrid_reference_candidates(previous_catalog):
+    candidates = []
+    if _iptv_ref is None:
+        return candidates
+
+    if previous_catalog:
+        local_meta = previous_catalog.get("reference_meta") or {}
+        if (
+            int(local_meta.get("schema_version") or 0) == _iptv_ref.REFERENCE_SCHEMA_VERSION
+            and clean(local_meta.get("logic_version")) == _iptv_ref.REFERENCE_LOGIC_VERSION
+        ):
+            candidates.append({
+                "schema_version": _iptv_ref.REFERENCE_SCHEMA_VERSION,
+                "logic_version": _iptv_ref.REFERENCE_LOGIC_VERSION,
+                "catalog": previous_catalog,
+                "source_name": "local previous catalogue",
+            })
+
+    bundled = _iptv_ref.load_reference_file(IPTV_BUNDLED_REFERENCE_FILE, "bundled reference")
+    if bundled:
+        candidates.append(bundled)
+    return candidates
+
+
+def _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data):
+    if _iptv_ref is None:
+        return []
+    missing = _iptv_ref.attach_variant_fingerprints(catalog, usable_streams)
+    catalog["reference_meta"] = _iptv_ref.make_reference_meta(
+        usable_streams,
+        epg_data,
+        raw_count=len(streams),
+        server=normalised_server() if clean(SERVER) else "",
+        username=USERNAME,
+    )
+    return missing
+
+
+def build_channel_catalog(streams, epg_data):
+    """Hybrid override with an exact/incremental reference path and full fallback."""
+    previous_catalog = _safe_load_catalog_file(CATALOG_FILE)
+    previous_states = _hybrid_enabled_states(previous_catalog)
+    usable_streams = _clean_streams_for_catalog(streams)
+
+    if _iptv_ref is not None:
+        account_fp = _iptv_ref.account_fingerprint(
+            normalised_server() if clean(SERVER) else "",
+            USERNAME,
+        )
+        incomplete, incomplete_reason = _iptv_ref.suspicious_incomplete(
+            previous_catalog,
+            len(usable_streams),
+            account_fp,
+        )
+        if incomplete:
+            raise GeneratorError(
+                "%s Existing working IPTV files were kept unchanged. Try again later." % incomplete_reason
+            )
+
+        epg_signatures = _iptv_ref.build_epg_signatures(epg_data)
+        fallback_reasons = []
+        for payload in _hybrid_reference_candidates(previous_catalog):
+            result = _iptv_ref.try_build_from_reference(
+                payload=payload,
+                usable_streams=usable_streams,
+                current_epg_meta=epg_signatures,
+                previous_enabled_states=previous_states,
+                raw_count=len(streams),
+                server=normalised_server() if clean(SERVER) else "",
+                output_format=OUTPUT_FORMAT,
+                is_potential_catalog_stream=_is_potential_catalog_stream,
+                variant_factory=_hybrid_reference_variant,
+                unique_sort_variants=_unique_sorted_variants,
+            )
+            if result.get("success"):
+                catalog = result["catalog"]
+                catalog["version"] = 5
+                catalog["mode"] = "grouped_plugin_resolver_hybrid_reference_uk_us_epg"
+                catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+                catalog = _safe_merge_duplicate_catalog_channels(catalog)
+                missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
+                if missing:
+                    fallback_reasons.append("reference fingerprint refresh was incomplete")
+                    break
+                return catalog
+            fallback_reasons.append("%s: %s" % (
+                payload.get("source_name", "reference"),
+                result.get("reason", "not reusable"),
+            ))
+    else:
+        fallback_reasons = ["reference helper unavailable"]
+
+    # Reliability-first fallback: run the existing full v4 matching logic.
+    catalog = _FULL_BUILD_CHANNEL_CATALOG_V4(streams, epg_data)
+    catalog["version"] = 5
+    catalog["mode"] = "grouped_plugin_resolver_hybrid_reference_uk_us_epg"
+    catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+    catalog["reference_build"] = {
+        "mode": "full",
+        "source": "full matcher",
+        "fallback_reasons": fallback_reasons[-8:],
+    }
+    catalog = _safe_merge_duplicate_catalog_channels(catalog)
+    missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
+    if missing:
+        catalog.setdefault("warnings", []).append(
+            "%s selected variants could not be fingerprinted; the next run may use full matching." % len(missing)
+        )
+    return catalog
+
+
+def _stage_path(directory, name):
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / name
+
+
+def _write_catalog_path(path, catalog):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(catalog, indent=2, sort_keys=False), encoding="utf-8")
+
+
+def _write_epg_to_path(catalog, epg_data, path):
+    global OUTPUT_EPG_FILE
+    original = OUTPUT_EPG_FILE
+    try:
+        OUTPUT_EPG_FILE = str(path)
+        return _write_filtered_epg_for_catalog(catalog, epg_data)
+    finally:
+        OUTPUT_EPG_FILE = original
+
+
+def _write_m3u_to_path(catalog, path, final_epg_path):
+    global OUTPUT_FILE, OUTPUT_EPG_FILE
+    original_output = OUTPUT_FILE
+    original_epg = OUTPUT_EPG_FILE
+    try:
+        OUTPUT_FILE = str(path)
+        OUTPUT_EPG_FILE = str(final_epg_path)
+        write_m3u_from_catalog(catalog)
+    finally:
+        OUTPUT_FILE = original_output
+        OUTPUT_EPG_FILE = original_epg
+
+
+def _write_report_to_path(catalog, filtered_epg_stats, path):
+    global REPORT_FILE
+    original = REPORT_FILE
+    try:
+        REPORT_FILE = str(path)
+        write_report_from_catalog(catalog, filtered_epg_stats)
+    finally:
+        REPORT_FILE = original
+
+
+def _validate_staged_generation(catalog, streams, catalog_path, m3u_path, epg_path):
+    errors = []
+    current_ids = None if streams is None else {str(get_stream_id(item)) for item in streams if get_stream_id(item)}
+    keys = set()
+    enabled = []
+    for channel in catalog.get("channels", []):
+        key = clean(channel.get("key"))
+        if not key:
+            errors.append("channel without key")
+            continue
+        if key in keys:
+            errors.append("duplicate channel key: %s" % key)
+        keys.add(key)
+        variants = channel.get("streams") or []
+        if not variants:
+            errors.append("channel without streams: %s" % key)
+        for variant in variants:
+            stream_id = clean(variant.get("stream_id"))
+            if not stream_id or (current_ids is not None and stream_id not in current_ids):
+                errors.append("stale/missing stream id %s in %s" % (stream_id, key))
+        if channel.get("enabled") and variants:
+            enabled.append(channel)
+
+    try:
+        staged_catalog = json.loads(Path(catalog_path).read_text(encoding="utf-8"))
+        if len(staged_catalog.get("channels", [])) != len(catalog.get("channels", [])):
+            errors.append("staged catalogue channel count mismatch")
+    except Exception as error:
+        errors.append("staged catalogue is unreadable: %s" % error)
+
+    try:
+        m3u_text = Path(m3u_path).read_text(encoding="utf-8", errors="replace")
+        extinf_count = sum(1 for line in m3u_text.splitlines() if line.startswith("#EXTINF:"))
+        plugin_count = sum(1 for line in m3u_text.splitlines() if line.startswith("plugin://"))
+        if extinf_count != len(enabled) or plugin_count != len(enabled):
+            errors.append("M3U count mismatch: expected %s, got %s/%s" % (len(enabled), extinf_count, plugin_count))
+    except Exception as error:
+        errors.append("staged M3U is unreadable: %s" % error)
+
+    epg_ids = set()
+    try:
+        epg_root = ET.parse(str(epg_path)).getroot()
+        epg_ids = {clean(node.get("id")) for node in epg_root.findall("channel") if clean(node.get("id"))}
+    except Exception as error:
+        errors.append("staged EPG is unreadable: %s" % error)
+
+    for channel in enabled:
+        xmltv_id = clean(channel.get("xmltv_id"))
+        if xmltv_id and xmltv_id not in epg_ids:
+            errors.append("enabled channel missing from EPG: %s (%s)" % (channel.get("key"), xmltv_id))
+
+    if not catalog.get("channels"):
+        errors.append("catalogue contains no channels")
+    if errors:
+        raise GeneratorError(
+            "Generated files failed validation; the existing working setup was not replaced.\n"
+            + "\n".join(errors[:20])
+        )
+    return {
+        "catalog_channels": len(catalog.get("channels", [])),
+        "enabled_channels": len(enabled),
+        "epg_channels": len(epg_ids),
+    }
+
+
+def _commit_staged_files(stage_map):
+    backup_dir = Path(IPTV_OUTPUT_DIR) / ".generation_backup"
+    if backup_dir.exists():
+        _shutil.rmtree(str(backup_dir), ignore_errors=True)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backups = {}
+    try:
+        for final_path in stage_map:
+            final_path = Path(final_path)
+            if final_path.exists():
+                backup = backup_dir / final_path.name
+                _shutil.copy2(str(final_path), str(backup))
+                backups[final_path] = backup
+
+        for final_path, staged_path in stage_map.items():
+            final_path = Path(final_path)
+            staged_path = Path(staged_path)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            staged_path.replace(final_path)
+    except BaseException:
+        for final_path in stage_map:
+            final_path = Path(final_path)
+            backup = backups.get(final_path)
+            try:
+                if backup and backup.exists():
+                    _shutil.copy2(str(backup), str(final_path))
+                elif final_path.exists() and final_path not in backups:
+                    final_path.unlink()
+            except Exception:
+                pass
+        raise
+    finally:
+        _shutil.rmtree(str(backup_dir), ignore_errors=True)
+
+
+def _atomic_final_catalog(catalog):
+    final = Path(CATALOG_FILE)
+    temp = Path(str(final) + ".tmp")
+    _write_catalog_path(temp, catalog)
+    temp.replace(final)
+
+
+def _atomic_final_report(catalog, filtered_epg_stats):
+    final = Path(REPORT_FILE)
+    temp = Path(str(final) + ".tmp")
+    _write_report_to_path(catalog, filtered_epg_stats, temp)
+    temp.replace(final)
+
+
+def run_generator(reload_pvr=True):
+    """Hybrid/staged generator override."""
+    timings, mark = _new_timing_tracker()
+    stage_dir = Path(IPTV_OUTPUT_DIR) / (".generation_stage_%s_%s" % (_os.getpid(), int(_time.time() * 1000)))
+    final_catalog = Path(CATALOG_FILE)
+    final_m3u = Path(OUTPUT_FILE)
+    final_epg = Path(OUTPUT_EPG_FILE)
+    final_report = Path(REPORT_FILE)
+
+    try:
+        maybe_download_live_streams()
+        mark("Download/live stream cache")
+
+        input_path = Path(INPUT_JSON)
+        if not input_path.exists():
+            raise GeneratorError("Cannot find %s. Download failed." % INPUT_JSON)
+        streams = load_and_validate_live_streams(input_path)
+        mark("Load and validate live streams")
+
+        _download_epg_sources()
+        mark("Download EPG sources")
+        epg_data = _load_epg_sources(require_uk=True)
+        mark("Load EPG XML sources")
+
+        catalog = build_channel_catalog(streams, epg_data)
+        mark("Build channel catalogue")
+        catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+        catalog["timings"] = timings
+
+        staged_catalog = _stage_path(stage_dir, "IPTV-Catalog.json")
+        staged_epg = _stage_path(stage_dir, "IPTV-EPG.xml")
+        staged_catalog_epg = _stage_path(stage_dir, "IPTV-EPG-Catalog.xml")
+        staged_m3u = _stage_path(stage_dir, "IPTV.m3u")
+        staged_report = _stage_path(stage_dir, "IPTV-Report.txt")
+
+        _write_catalog_path(staged_catalog, catalog)
+        mark("Stage catalogue")
+        filtered_epg_stats = _write_epg_to_path(catalog, epg_data, staged_epg)
+        mark("Stage filtered EPG")
+        _write_catalog_epg_cache_to_path(catalog, epg_data, staged_catalog_epg)
+        mark("Stage catalogue EPG cache")
+        _write_m3u_to_path(catalog, staged_m3u, final_epg)
+        mark("Stage M3U")
+        catalog["timings"] = timings
+        _write_report_to_path(catalog, filtered_epg_stats, staged_report)
+        mark("Stage report")
+
+        validation = _validate_staged_generation(
+            catalog, streams, staged_catalog, staged_m3u, staged_epg
+        )
+        mark("Validate staged output")
+
+        _commit_staged_files({
+            final_epg: staged_epg,
+            Path(CATALOG_EPG_CACHE_FILE): staged_catalog_epg,
+            final_m3u: staged_m3u,
+            final_catalog: staged_catalog,
+            final_report: staged_report,
+        })
+        mark("Commit generated files")
+
+        iptv_simple_settings = update_iptv_simple_paths()
+        mark("Update IPTV Simple paths")
+        pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
+        mark("Reload PVR" if reload_pvr else "Skip PVR reload")
+
+        catalog["timings"] = timings
+        _atomic_final_catalog(catalog)
+        _atomic_final_report(catalog, filtered_epg_stats)
+
+        enabled = _enabled_channels(catalog)
+        reference_build = catalog.get("reference_build") or {}
+        return {
+            "success": True,
+            "playlist": str(final_m3u),
+            "epg": str(final_epg),
+            "report": str(final_report),
+            "catalog": str(final_catalog),
+            "channels": len(enabled),
+            "catalog_channels": len(catalog.get("channels", [])),
+            "disabled": len(catalog.get("channels", [])) - len(enabled),
+            "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
+            "dropped": len(catalog.get("dropped", [])),
+            "filtered_epg": filtered_epg_stats,
+            "iptv_simple_settings": iptv_simple_settings,
+            "pvr_reload": pvr_reload,
+            "timings": timings,
+            "build_mode": reference_build.get("mode", "full"),
+            "reference_source": reference_build.get("source", "full matcher"),
+            "validation": validation,
+        }
+    finally:
+        _shutil.rmtree(str(stage_dir), ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from caches.base_cache import connect_database
 from modules.kodi_utils import get_property, set_property, clear_property
+from modules import settings
 # from modules.kodi_utils import logger
 
 class NavigatorCache:
@@ -210,22 +211,22 @@ class NavigatorCache:
 				]
 
 	def random_trakt_lists_personal(self):
-		return [
-			{'mode': 'random.build_movie_list', 'action': 'trakt_collection_lists', 'name': 'Random Trakt Movie Collection', 'iconImage': 'movies', 'random': 'true'},
-			{'mode': 'random.build_tvshow_list', 'action': 'trakt_collection_lists', 'name': 'Random Trakt TV Show Collection', 'iconImage': 'tv', 'random': 'true'},
-			{'mode': 'random.build_movie_list', 'action': 'trakt_watchlist_lists', 'name': 'Random Trakt Movie Watchlist', 'iconImage': 'movies', 'random': 'true'},
-			{'mode': 'random.build_tvshow_list', 'action': 'trakt_watchlist_lists', 'name': 'Random Trakt TV Show Watchlist', 'iconImage': 'tv', 'random': 'true'},
-			{'mode': 'random.build_movie_list', 'action': 'trakt_recommendations', 'new_page': 'movies', 'name': 'Random Trakt Recommended Movies',
-			'iconImage': 'movies', 'random': 'true'},
-			{'mode': 'random.build_tvshow_list', 'action': 'trakt_recommendations', 'new_page': 'shows', 'name': 'Random Trakt Recommended TV Shows',
-			'iconImage': 'tv', 'random': 'true'},
-			{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'my_lists', 'name': 'Random Shuffled Trakt My Lists (All)',
-			'iconImage': 'trakt', 'random': 'true', 'shuffle': 'true'},
-			{'mode': 'random.build_trakt_lists', 'list_type': 'my_lists', 'name': 'Random Trakt My Lists (Single)', 'iconImage': 'trakt', 'random': 'true'},
-			{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Shuffled Trakt Liked Lists (All)',
-			'iconImage': 'trakt', 'random': 'true', 'shuffle': 'true'},
-			{'mode': 'random.build_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Trakt Liked Lists (Single)', 'iconImage': 'trakt', 'random': 'true'},
-				]
+		provider_name = settings.tracking_provider_name()
+		icon = 'trakt' if settings.tracking_provider() == 1 else 'lists'
+		result = [
+			{'mode': 'random.build_movie_list', 'action': 'tracking_collection_lists', 'name': 'Random %s Movie Collection' % provider_name, 'iconImage': 'movies', 'random': 'true'},
+			{'mode': 'random.build_tvshow_list', 'action': 'tracking_collection_lists', 'name': 'Random %s TV Show Collection' % provider_name, 'iconImage': 'tv', 'random': 'true'},
+			{'mode': 'random.build_movie_list', 'action': 'tracking_watchlist_lists', 'name': 'Random %s Movie Watchlist' % provider_name, 'iconImage': 'movies', 'random': 'true'},
+			{'mode': 'random.build_tvshow_list', 'action': 'tracking_watchlist_lists', 'name': 'Random %s TV Show Watchlist' % provider_name, 'iconImage': 'tv', 'random': 'true'},
+			{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'my_lists', 'name': 'Random Shuffled %s My Lists (All)' % provider_name, 'iconImage': icon, 'random': 'true', 'shuffle': 'true'},
+			{'mode': 'random.build_trakt_lists', 'list_type': 'my_lists', 'name': 'Random %s My Lists (Single)' % provider_name, 'iconImage': icon, 'random': 'true'}]
+		if settings.tracking_provider() == 1:
+			result.extend([
+				{'mode': 'random.build_movie_list', 'action': 'trakt_recommendations', 'new_page': 'movies', 'name': 'Random Trakt Recommended Movies', 'iconImage': 'movies', 'random': 'true'},
+				{'mode': 'random.build_tvshow_list', 'action': 'trakt_recommendations', 'new_page': 'shows', 'name': 'Random Trakt Recommended TV Shows', 'iconImage': 'tv', 'random': 'true'},
+				{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Shuffled Trakt Liked Lists (All)', 'iconImage': 'trakt', 'random': 'true', 'shuffle': 'true'},
+				{'mode': 'random.build_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Trakt Liked Lists (Single)', 'iconImage': 'trakt', 'random': 'true'}])
+		return result
 
 	def random_trakt_lists_public(self):
 		return [

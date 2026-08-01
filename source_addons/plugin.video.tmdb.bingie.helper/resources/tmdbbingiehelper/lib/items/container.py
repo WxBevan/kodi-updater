@@ -94,8 +94,8 @@ class ContainerDirectoryCommon(CommonContainerAPIs):
 
     @cached_property
     def trakt_playdata(self):
-        from tmdbbingiehelper.lib.items.trakt import TraktPlayData
-        return TraktPlayData(
+        from tmdbbingiehelper.lib.items.tracking import TrackingPlayData
+        return TrackingPlayData(
             watchedindicators=get_setting('trakt_watchedindicators'),
             pauseplayprogress=get_setting('trakt_playprogress'),
             traktepisodetypes=get_setting('trakt_episodetypes'))

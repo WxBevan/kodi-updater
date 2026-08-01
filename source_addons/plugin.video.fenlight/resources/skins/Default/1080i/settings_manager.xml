@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <window>
     <onload>SetFocus(2000,0,absolute)</onload>
+    <onload>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.refresh_account_properties)</onload>
     <controls>
         <!-- Background -->
         <control type="image">
@@ -516,46 +517,44 @@
                           <property name="setting_description">Leave this setting as default unless you wsh to update Fen Light through a different user repository. If you do, enter the Github Repo Address of the new github location</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=update.location)</onclick>
                       </item>
-        <!-- Watched Indicators -->
+        <!-- Tracking Provider -->
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <property name="setting_label">Watched Indicators</property>
+                          <property name="setting_label">Tracking</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Watched Status Provider</property>
+                          <property name="setting_label">Tracking Provider</property>
                           <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.watched_indicators_name)]</property>
-                          <property name="setting_description">Choose the provider that keeps track of the Movies and Episodes you have watched within Fen Light. Options are the built in method of Fen Light or your Trakt account</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=watched_indicators)</onclick>
-                      </item>
-        <!-- Trakt Cache -->
-                      <item>
-                          <visible>Container(2000).HasFocus(10)</visible>
-                          <property name="setting_label">Trakt Cache</property>
-                          <property name="setting_type">separator</property>
-                          <onclick>noop</onclick>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.provider_name)]</property>
+                          <property name="setting_description">Choose MDBList, Trakt, or FLAM local tracking. MDBList is the default for new installations. TMDb remains the metadata and artwork provider.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.select_provider)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
+                          <property name="setting_label">Sync Now</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.provider_name)]</property>
+                          <property name="setting_description">Download watched history, resume positions, dropped shows, ratings, collections, watchlists and list activity from the selected tracking provider.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.force_sync)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
                           <property name="setting_label">Resync Interval (mins)</property>
                           <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.sync_interval)]</property>
-                          <property name="setting_description">Choose how often Fen Light polls your Trakt service for any changes</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=trakt.sync_interval)</onclick>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.sync_interval)]</property>
+                          <property name="setting_description">Choose how often FLAM checks the selected tracking provider for changes.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=tracking.sync_interval)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Refresh Widgets After Trakt Sync</property>
+                          <property name="setting_label">Refresh Widgets After Sync</property>
                           <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.refresh_widgets)]</property>
-                          <property name="setting_description">Enable this and Fen Light will refresh widgets after performing a Trakt Sync if there were any changes</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=trakt.refresh_widgets)</onclick>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.refresh_widgets)]</property>
+                          <property name="setting_description">Refresh Bingie and Kodi widgets after a selected-provider sync changes playback state.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=tracking.refresh_widgets)</onclick>
                       </item>
         <!-- UTC Time Offset -->
                       <item>
@@ -833,10 +832,10 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Include Unaired Media in Trakt Watchlists</property>
+                          <property name="setting_label">Include Unaired Media in Tracking Watchlists</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.show_unaired_watchlist)]</property>
-                          <property name="setting_description">Enable this and Fen Light will display any unaired media in your Trakt Movie/TV Show Watchlists. Disable this and any unaired Media will be hidden</property>
+                          <property name="setting_description">Enable this and Fen Light will display unaired media in the selected provider watchlists. Disable it to hide unaired media.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=show_unaired_watchlist)</onclick>
                       </item>
                       <item>
@@ -950,29 +949,27 @@
                           <property name="setting_description">Choose the sort order for your Watched media</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=sort.watched)</onclick>
                       </item>
-        <!-- Contents Sort Order For Trakt Lists -->
+        <!-- Contents Sort Order For Tracking Lists -->
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Contents Sort Order For Trakt Lists</property>
+                          <property name="setting_label">Contents Sort Order For Tracking Lists</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Trakt Collection</property>
+                          <property name="setting_label">Tracking Collection</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.sort.collection_name)]</property>
-                          <property name="setting_description">Choose the sort order for your Trakt Collection media</property>
+                          <property name="setting_description">Choose the sort order for your Tracking Collection media</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=sort.collection)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Trakt Watchlist</property>
+                          <property name="setting_label">Tracking Watchlist</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.sort.watchlist_name)]</property>
-                          <property name="setting_description">Choose the sort order for your Trakt Watchlist media</property>
+                          <property name="setting_description">Choose the sort order for your Tracking Watchlist media</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=sort.watchlist)</onclick>
                       </item>
         <!-- TMDb Lists -->
@@ -1192,10 +1189,10 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(40)</visible>
-                          <property name="setting_label">Include Trakt Watchlist/Fen Light Favorites</property>
+                          <property name="setting_label">Include Tracking Watchlist/Fen Light Favorites</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.nextep.include_unwatched_name)]</property>
-                          <property name="setting_description">Choose which lists are included within Fen Lights Next Episodes. You can include your Trakt Watchlist, your Fen Light Favorites, or both. They will show with a DARKGOLDENROD highlight</property>
+                          <property name="setting_description">Choose which lists are included within Fen Lights Next Episodes. You can include your Tracking Watchlist, your Fen Light Favorites, or both. They will show with a DARKGOLDENROD highlight</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=nextep.include_unwatched)</onclick>
                       </item>
                       <item>
@@ -1262,6 +1259,87 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=trakt.calendar_future_days)</onclick>
                       </item>
 <!-- META ACCOUNTS 50 -->
+        <!-- Tracking Provider -->
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Tracking Service</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Selected Service</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.provider_summary)]</property>
+                          <property name="setting_description">Choose MDBList, Trakt or Local only. Saved account details are retained when switching.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.select_provider)</onclick>
+                      </item>
+        <!-- MDBList -->
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">MDBList</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Connection Status</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mdblist.status)]</property>
+                          <property name="setting_description">$INFO[Window(10000).Property(fenlight.mdblist.auth_method)]</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Connect / Re-authenticate</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">QR / Device Code</property>
+                          <property name="setting_description">Authorize MDBList with its official TV/device OAuth flow.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mdblist.mdblist_authenticate&amp;method=device)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Enter / Replace API Key</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">Manual fallback</property>
+                          <property name="setting_description">Save a personal MDBList API key as the primary login or OAuth fallback.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mdblist.mdblist_authenticate&amp;method=apikey)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Client ID Key</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mdblist.client_id)]</property>
+                          <property name="setting_description">Advanced setting. Override FLAM's bundled MDBList Device Code Client ID.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=mdblist.client_id)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.mdblist.client_id),C8zkrMF6q6hXgVQ9PWJxBmh6SfvOkcyWOGRez8yZ)</visible>
+                          <property name="setting_label">    - Restore Default Client ID Key</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Restore FLAM's bundled MDBList Device Code Client ID.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.restore_setting_default&amp;setting_id=mdblist.client_id)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.mdblist.has_oauth),true)</visible>
+                          <property name="setting_label">Disconnect OAuth</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Remove OAuth tokens but retain the API key fallback.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mdblist.mdblist_disconnect_oauth)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.mdblist.has_apikey),true)</visible>
+                          <property name="setting_label">Remove API Key</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Remove only the manual API-key credential.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mdblist.mdblist_remove_api_key)</onclick>
+                      </item>
         <!-- Trakt -->
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
@@ -1271,21 +1349,27 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Authorize</property>
+                          <property name="setting_label">Connection Status</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.status)]</property>
+                          <property name="setting_description">Trakt credentials remain saved when another tracking service is selected.</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Authenticate / Re-authenticate</property>
                           <property name="setting_type">action</property>
-                          <property name="setting_value">...</property>
-                          <property name="setting_description">Authorize your Trakt account and use it within Fen Light</property>
+                          <property name="setting_value">QR / Device Code</property>
+                          <property name="setting_description">Run the existing Trakt authorization without changing the selected tracking service.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_authenticate)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.trakt.connected),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">...</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.user)]</property>
-                          <property name="setting_description">Revoke authorization of your Trakt account</property>
+                          <property name="setting_description">Remove only the saved Trakt authorization.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
                       </item>
                       <item>

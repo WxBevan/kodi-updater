@@ -435,6 +435,38 @@
                     <visible>false</visible>
                     <enable>false</enable>
                 </setting>
+                <setting id="mdblist_access_token" type="string" label="MDBList OAuth access token" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints><allowempty>true</allowempty></constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                    <enable>false</enable>
+                </setting>
+                <setting id="mdblist_refresh_token" type="string" label="MDBList OAuth refresh token" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints><allowempty>true</allowempty></constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                    <enable>false</enable>
+                </setting>
+                <setting id="mdblist_token_expires" type="string" label="MDBList OAuth expiry" help="">
+                    <level>0</level>
+                    <default>0</default>
+                    <constraints><allowempty>true</allowempty></constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                    <enable>false</enable>
+                </setting>
+                <setting id="mdblist_client_id" type="string" label="MDBList OAuth client ID" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints><allowempty>true</allowempty></constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                    <enable>false</enable>
+                </setting>
             </group>
             <group id="3" label="32030">
                 <setting id="fanarttv_clientkey" type="string" label="32019" help="">
@@ -579,6 +611,18 @@
                     <control type="slider" format="integer">
                         <popup>false</popup>
                     </control>
+                </setting>
+                <setting id="tracking_provider" type="integer" label="Tracking provider" help="MDBList is the default provider. FLAM keeps this setting synchronized.">
+                    <level>0</level>
+                    <default>0</default>
+                    <constraints>
+                        <options>
+                            <option label="MDBList">0</option>
+                            <option label="Trakt">1</option>
+                            <option label="Local only">2</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
                 </setting>
                 <setting id="trakt_scrobbling" type="boolean" label="32529" help="">
                     <level>0</level>

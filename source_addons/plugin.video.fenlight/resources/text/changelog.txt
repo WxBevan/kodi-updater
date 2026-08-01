@@ -1,6 +1,27 @@
 [COLOR darkgoldenrod]GOD BLESS HIM AND KEEP HIM SAFE.[/COLOR]
 
 
+[COLOR dodgerblue][B]Version 2.1.75[/B][/COLOR]
+- Merged TNT Sports provider aliases, plus duplicate NFL/MLB catalogue rows, so each real channel appears once with all available links.
+- Prevented temporary PPV/event title changes from forcing an unnecessary full IPTV rematch.
+- Added a compact all-catalogue EPG cache so Manage Live TV Channels no longer reparses the full UK and US guide files.
+- Made channel-selection rebuilds staged and validated before replacing the working catalogue, M3U and EPG.
+
+
+[COLOR dodgerblue][B]Version 2.1.74[/B][/COLOR]
+- Added reliability-first hybrid IPTV generation using a bundled credential-free provider reference and local incremental cache.
+- Added automatic full matching fallback for new, renamed, reused or uncertain channel identities and changed EPG definitions.
+- Added staged output validation so incomplete generation cannot replace working M3U, EPG or catalogue files.
+- Reduced repeated IPTV matching work and added generation-mode reporting.
+
+
+[COLOR dodgerblue][B]Version 2.1.72[/B][/COLOR]
+- Added MDBList Device Code OAuth authentication with QR code, one-time code and API-key fallback.
+- Added tracking-service selection and connection status to the custom Accounts and Used Accounts screens.
+- Switching between MDBList, Trakt and Local only now keeps both remote accounts saved.
+- Added OAuth bearer-token support to TMDb Bingie Helper for watched indicators and fallback scrobbling.
+
+
 [COLOR dodgerblue][B]Version 2.1.63[/B][/COLOR]
 - Quick fix for Discover.
 

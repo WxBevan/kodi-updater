@@ -160,7 +160,7 @@ def adjust_tmdb_list_properties(params):
 	if custom_poster: choices.append(('Delete Custom Poster', '', 'delete_poster'))
 	if custom_fanart: choices.append(('Delete Custom Fanart', '', 'delete_fanart'))
 	choices.extend([('Empty List Contents', 'Delete All Contents of %s' % current_name, 'empty_contents'),
-					('Import Trakt List', 'Import a Trakt List into %s' % current_name, 'import_trakt')])
+					('Import Tracking List', 'Import a list from your selected tracking provider into %s' % current_name, 'import_trakt')])
 	list_items = [{'line1': item[0], 'line2': item[1] or item[0]} for item in choices]
 	kwargs = {'items': json.dumps(list_items), 'heading': 'TMDb List Properties', 'multi_line': 'true', 'narrow_window': 'true'}
 	action = kodi_utils.select_dialog([i[2] for i in choices], **kwargs)
@@ -264,10 +264,10 @@ def check_item_status(list_id, media_type, media_id):
 def make_new_tmdb_list(params):
 	suggested_list_name, chosen_list = '', None
 	external_creation = params.get('external_creation', 'false') == 'true'
-	if not external_creation and kodi_utils.confirm_dialog(heading='TMDb Lists', text='Import a Trakt List to populate this new list?',
+	if not external_creation and kodi_utils.confirm_dialog(heading='TMDb Lists', text='Import a %s list to populate this new list?' % settings.tracking_provider_name(),
 																				ok_label='Yes', cancel_label='No'):
-		from apis.trakt_api import get_trakt_list_selection
-		chosen_list = get_trakt_list_selection(['default', 'personal'])
+		from apis.tracking_api import get_tracking_list_selection
+		chosen_list = get_tracking_list_selection(['default', 'personal'])
 		if chosen_list == None: return
 		suggested_list_name = chosen_list.get('name')
 	list_name = kodi_utils.kodi_dialog().input('Please Choose a Name for the New TMDb List', defaultt=suggested_list_name)
@@ -360,11 +360,11 @@ def cache_delete_list_tmdb(params):
 
 def import_trakt_list_tmdb(params):
 	if not list_change_warning(params['list_name']): return None
-	from apis.trakt_api import get_trakt_list_selection
+	from apis.tracking_api import get_tracking_list_selection
 	list_id = params.get('list_id', '')
-	chosen_list = get_trakt_list_selection(['default', 'personal'])
+	chosen_list = get_tracking_list_selection(['default', 'personal'])
 	if chosen_list == None: return None
-	if kodi_utils.confirm_dialog(heading='TMDb Lists', text='Rename List to Match Trakt List Name?', ok_label='Yes', cancel_label='No'): rename_list = True
+	if kodi_utils.confirm_dialog(heading='TMDb Lists', text='Rename List to Match %s List Name?' % settings.tracking_provider_name(), ok_label='Yes', cancel_label='No'): rename_list = True
 	else: rename_list = False
 	trakt_list_name = chosen_list.get('name')
 	new_contents = process_trakt_list(chosen_list)
@@ -374,7 +374,7 @@ def import_trakt_list_tmdb(params):
 	kodi_utils.notification('Success. Items added' if success else 'Error adding items', 2000)
 
 def process_trakt_list(chosen_list):
-	from apis.trakt_api import trakt_fetch_collection_watchlist, get_trakt_list_contents
+	from apis.tracking_api import tracking_fetch_collection_watchlist, get_tracking_list_contents
 	tmdb_media_converter = {'movie': 'movie', 'tvshow': 'tv', 'show': 'tv'}
 	media_type_check = {'movie': 'movie', 'show': 'tvshow', 'tvshow': 'tvshow'}
 	new_contents = []
@@ -382,7 +382,7 @@ def process_trakt_list(chosen_list):
 	trakt_list_type, trakt_list_name = chosen_list.get('list_type'), chosen_list.get('name')
 	if trakt_list_type in ('collection', 'watchlist'):
 		trakt_media_type = chosen_list.get('media_type')
-		result = trakt_fetch_collection_watchlist(trakt_list_type, trakt_media_type)
+		result = tracking_fetch_collection_watchlist(trakt_list_type, trakt_media_type)
 		try:
 			sort_order = lists_sort_order(trakt_list_type)
 			if sort_order == 0: result = sort_for_article(result, 'title', ignore_articles())
@@ -390,7 +390,7 @@ def process_trakt_list(chosen_list):
 			else: result.sort(key=lambda k: k.get('released'), reverse=True)
 		except: pass
 	else:
-		result = get_trakt_list_contents(trakt_list_type, chosen_list.get('user'), chosen_list.get('slug'), trakt_list_type == 'my_lists')
+		result = get_tracking_list_contents(trakt_list_type, chosen_list.get('user'), chosen_list.get('slug'), trakt_list_type == 'my_lists')
 		try: result.sort(key=lambda k: (k['order']))
 		except: pass
 	for item in result:

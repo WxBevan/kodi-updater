@@ -172,33 +172,43 @@ def trakt_authenticate(dummy=''):
 		set_setting('trakt.token', token['access_token'])
 		set_setting('trakt.refresh', token['refresh_token'])
 		set_setting('trakt.expires', str(time.time() + token['expires_in']))
-		set_setting('watched_indicators', '1')
+		# Authentication does not change the selected tracking provider.
+		# This allows MDBList and Trakt credentials to remain saved side by side.
+		from apis.tracking_api import provider_id, sync_helper_settings
+		if provider_id() == 1: set_setting('watched_indicators', '1')
 		kodi_utils.sleep(1000)
 		try:
 			user = call_trakt('/users/me')
 			set_setting('trakt.user', str(user['username']))
 		except: pass
+		sync_helper_settings()
 		kodi_utils.notification('Trakt Account Authorized', 3000)
-		trakt_sync_activities(force_update=True)
+		if provider_id() == 1: trakt_sync_activities(force_update=True)
+		kodi_utils.kodi_refresh()
 		return True
 	kodi_utils.notification('Trakt Error Authorizing', 3000)
 	return False
 
 def trakt_revoke_authentication(dummy=''):
+	access_token = get_setting('fenlight.trakt.token')
+	CLIENT_ID = settings.trakt_client()
+	CLIENT_SECRET = settings.trakt_secret()
+	if access_token not in (None, '', '0', 'empty_setting') and CLIENT_ID not in (None, '', 'empty_setting') and CLIENT_SECRET not in (None, '', 'empty_setting'):
+		try:
+			call_trakt('oauth/revoke', data={'token': access_token, 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}, with_auth=False)
+		except: pass
 	set_setting('trakt.user', 'empty_setting')
 	set_setting('trakt.expires', '0')
 	set_setting('trakt.token', '0')
 	set_setting('trakt.refresh', '0')
 	set_setting('trakt.next_daily_clear', '0')
-	set_setting('watched_indicators', '0')
+	if get_setting('fenlight.tracking.provider', '1') == '1': set_setting('watched_indicators', '0')
+	from apis.tracking_api import sync_helper_settings
+	sync_helper_settings()
 	trakt_cache.clear_all_trakt_cache_data(silent=True, refresh=False)
 	kodi_utils.notification('Trakt Account Authorization Reset', 3000)
-	CLIENT_ID = settings.trakt_client()
-	if CLIENT_ID in (None, 'empty_setting', ''): return no_client_key()
-	CLIENT_SECRET = settings.trakt_secret()
-	if CLIENT_SECRET in (None, 'empty_setting', ''): return no_secret_key()
-	data = {'token': get_setting('fenlight.trakt.token'), 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}
-	response = call_trakt("oauth/revoke", data=data, with_auth=False)
+	kodi_utils.kodi_refresh()
+	return True
 
 def trakt_movies_trending(page_no):
 	string = 'trakt_movies_trending_%s' % page_no

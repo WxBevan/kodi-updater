@@ -20,6 +20,7 @@ class TVShows:
 	'trakt_anime_trending', 'trakt_anime_trending_recent', 'trakt_anime_most_watched', 'trakt_anime_most_favorited')
 	trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites')
+	tracking_personal = ('tracking_collection', 'tracking_watchlist', 'tracking_collection_lists', 'tracking_watchlist_lists')
 	trakt_search = ('trakt_tv_search', 'trakt_anime_search')
 	
 	def __init__(self, params):
@@ -89,10 +90,10 @@ class TVShows:
 				data = function(key_id, page_no)
 				self.list = [i['show']['ids'] for i in data]
 				if not is_random: self.new_page = {'new_page': str(page_no + 1), 'key_id': key_id}
-			elif self.action in self.trakt_personal:
+			elif self.action in self.trakt_personal + self.tracking_personal:
 				self.id_type = 'trakt_dict'
 				data = function('shows', page_no)
-				if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites'): total_pages = 1
+				if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites', 'tracking_collection_lists', 'tracking_watchlist_lists'): total_pages = 1
 				else: data, total_pages = self.paginate_list(data, page_no)
 				self.list = [i['media_ids'] for i in data]
 				if total_pages > 2: self.total_pages = total_pages

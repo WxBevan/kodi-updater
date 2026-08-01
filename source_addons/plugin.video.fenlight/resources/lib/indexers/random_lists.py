@@ -8,7 +8,7 @@ from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from modules import meta_lists
 from modules.settings import paginate, page_limit, trakt_user_active
-from modules import kodi_utils
+from modules import kodi_utils, settings
 from modules.utils import manual_function_import, make_thread_list
 # logger = kodi_utils.logger
 
@@ -83,7 +83,7 @@ class RandomLists():
 		if self.action in self.tvshow_trakt_main: return self.random_trakt_main()
 		if self.action in self.movie_special_main: return self.random_special_main()
 		if self.action in self.tvshow_special_main: return self.random_special_main()
-		if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists'): return self.random_trakt_collection_watchlist()
+		if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists', 'tracking_collection_lists', 'tracking_watchlist_lists'): return self.random_trakt_collection_watchlist()
 		if self.action == 'because_you_watched': return self.random_because_you_watched()
 		if self.mode == 'build_trakt_lists': return self.random_trakt_lists()
 		if self.mode == 'build_personal_lists': return self.random_personal_lists()
@@ -163,10 +163,10 @@ class RandomLists():
 		self.make_directory()
 
 	def random_trakt_collection_watchlist(self):
-		from apis.trakt_api import trakt_collection_lists, trakt_watchlist_lists
+		from apis.tracking_api import tracking_collection_lists, tracking_watchlist_lists
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (self.menu_type, self.action), self.is_external)
 		if not random_list:
-			function = trakt_collection_lists if self.action == 'trakt_collection_lists' else trakt_watchlist_lists
+			function = tracking_collection_lists if 'collection' in self.action else tracking_watchlist_lists
 			self.random_results = function('movies' if self.menu_type in ('movie', 'movies') else 'shows', None)
 			if paginate(self.is_external): random_list = random.sample(self.random_results, min(len(self.random_results), page_limit(self.is_external)))
 			else: random_list = random.sample(self.random_results, len(self.random_results))
@@ -214,18 +214,20 @@ class RandomLists():
 
 	def random_trakt_lists(self):
 		from apis.trakt_api import trakt_get_lists, get_trakt_list_contents
+		from apis.tracking_api import tracking_get_lists, get_tracking_list_contents, provider_name
 		from indexers.trakt_lists import build_trakt_list
 		list_type = self.params.get('list_type')
-		list_type_name = 'Trakt My Lists' if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
+		list_type_name = '%s My Lists' % provider_name() if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (self.mode, list_type), self.is_external)
 		if not random_list:
-			if list_type == 'my_lists': self.random_results = [i for i in trakt_get_lists(list_type) if i['item_count']]
+			if list_type == 'my_lists': self.random_results = [i for i in tracking_get_lists(list_type) if i['item_count']]
 			else: self.random_results = [i['list'] for i in trakt_get_lists(list_type) if i['list']['item_count']]
+			if not self.random_results: return self.make_directory()
 			random_list = random.choice(self.random_results)
 			user, slug = random_list['user']['ids']['slug'], random_list['ids']['slug']
 			list_name = random_list['name']
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			result = get_tracking_list_contents(list_type, user, slug, with_auth) if list_type == 'my_lists' else get_trakt_list_contents(list_type, user, slug, with_auth)
 			random.shuffle(result)
 			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
 			else: data = random.sample(result, len(result))
@@ -290,14 +292,15 @@ class RandomLists():
 
 	def trakt_lists_contents(self):
 		from apis.trakt_api import get_trakt_list_contents
+		from apis.tracking_api import get_tracking_list_contents, provider_name
 		from indexers.trakt_lists import build_trakt_list
 		list_name, list_type = self.params.get('list_name'), self.params.get('list_type')
-		list_type_name = 'Trakt My Lists' if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
+		list_type_name = '%s My Lists' % provider_name() if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (list_type, list_name), self.is_external)
 		if not random_list:
 			user, slug = self.params_get('user'), self.params_get('slug')
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			result = get_tracking_list_contents(list_type, user, slug, with_auth) if list_type == 'my_lists' else get_trakt_list_contents(list_type, user, slug, with_auth)
 			random.shuffle(result)
 			if paginate(self.is_external): result = random.sample(result, min(len(result), page_limit(self.is_external)))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(result)]

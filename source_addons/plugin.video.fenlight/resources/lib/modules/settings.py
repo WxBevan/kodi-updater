@@ -12,8 +12,32 @@ def trakt_client():
 def trakt_secret():
 	return get_setting('fenlight.trakt.secret', '')
 
+def mdblist_client():
+	"""Return a custom MDBList Client ID or FLAM's bundled default."""
+	value = get_setting('fenlight.mdblist.client_id', '')
+	if value in (None, '', '0', 'empty_setting'):
+		setting_info = default_setting_values('mdblist.client_id')
+		return setting_info['setting_default'] if setting_info else ''
+	return value
+
 def trakt_user_active():
 	return get_setting('fenlight.trakt.user', 'empty_setting') not in (None, 'empty_setting', '')
+
+def mdblist_user_active():
+	credentials = (get_setting('fenlight.mdblist.apikey', 'empty_setting'), get_setting('fenlight.mdblist.access_token', 'empty_setting'))
+	return any(i not in (None, 'empty_setting', '', '0') for i in credentials) and get_setting('fenlight.mdblist.user', 'empty_setting') not in (None, 'empty_setting', '')
+
+def tracking_provider():
+	return int(get_setting('fenlight.tracking.provider', '0'))
+
+def tracking_provider_name():
+	return {0: 'MDBList', 1: 'Trakt', 2: 'Local only'}.get(tracking_provider(), 'MDBList')
+
+def tracking_user_active():
+	provider = tracking_provider()
+	if provider == 0: return mdblist_user_active()
+	if provider == 1: return trakt_user_active()
+	return True
 
 def tmdblist_user_active():
 	return get_setting('fenlight.tmdb.account_id', 'empty_setting') not in (None, 'empty_setting', '')
@@ -178,6 +202,10 @@ def trakt_sync_interval():
 	setting = get_setting('fenlight.trakt.sync_interval', '60')
 	interval = int(setting) * 60
 	return setting, interval
+
+def tracking_sync_interval():
+	setting = get_setting('fenlight.tracking.sync_interval', get_setting('fenlight.trakt.sync_interval', '60'))
+	return setting, int(setting) * 60
 
 def lists_sort_order(setting):
 	return int(get_setting('fenlight.sort.%s' % setting, '0'))
@@ -374,8 +402,13 @@ def media_open_action(media_type):
 	return int(get_setting('fenlight.media_open_action_%s' % media_type, '0'))
 
 def watched_indicators():
-	if not trakt_user_active(): return 0
-	return int(get_setting('fenlight.watched_indicators', '0'))
+	# Database selector used throughout FLAM: local=0, Trakt=1, MDBList=2.
+	provider = tracking_provider()
+	if provider == 0:
+		return 2 if mdblist_user_active() else 0
+	if provider == 1:
+		return 1 if trakt_user_active() else 0
+	return 0
 
 def flatten_episodes():
 	return get_setting('fenlight.trakt.flatten_episodes', 'false') == 'true'

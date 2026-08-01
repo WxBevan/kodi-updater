@@ -5,6 +5,8 @@ import json
 from random import shuffle
 from threading import Thread
 from apis.trakt_api import trakt_get_lists, trakt_search_lists, get_trakt_list_contents, trakt_lists_with_media
+from apis.tracking_api import (tracking_get_lists, get_tracking_list_contents, make_new_tracking_list,
+                               delete_tracking_list, provider_id, provider_name)
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from indexers.seasons import single_seasons
@@ -69,16 +71,14 @@ def get_trakt_lists(params):
 			try:
 				cm = []
 				cm_append = cm.append
-				list_name, user, slug, item_count = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['item_count']
+				list_name, user, slug, item_count = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item.get('item_count', 0)
 				if user in (None, 'None'): continue
 				custom_poster = get_custom_image(list_name, list_type, user, 'poster', all_posters)
-				if custom_poster: poster = custom_poster
-				else: poster = trakt_icon
+				poster = custom_poster or list_icon
 				custom_fanart = get_custom_image(list_name, list_type, user, 'fanart', all_fanart)
-				if custom_fanart: background = custom_fanart
-				else: background = fanart
+				background = custom_fanart or fanart
 				mode = 'random.build_trakt_lists_contents' if random else 'trakt.list.build_trakt_list'
-				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_name': list_name, 'iconImage': 'trakt', 'name': list_name}
+				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_name': list_name, 'iconImage': icon_name, 'name': list_name}
 				if random: url_params['random'] = 'true'
 				elif shuffle_lists: url_params['shuffle'] = 'true'
 				url = build_url(url_params)
@@ -87,54 +87,64 @@ def get_trakt_lists(params):
 					cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
 				else:
 					display = '%s [I](x%s)[/I]' % (list_name, str(item_count))
-					cm_append(('[B]Make New List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.make_new_trakt_list'})))
-					cm_append(('[B]Delete List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
+					cm_append(('[B]Make New List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tracking.make_new_tracking_list'})))
+					cm_append(('[B]Delete List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tracking.delete_tracking_list', 'user': user, 'list_slug': slug, 'list_id': slug})))
 				cm_append(('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url})))
 				cm_append(('[B]Make Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_poster',
 					'custom_image': custom_poster, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
 				cm_append(('[B]Make Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_fanart',
 					'custom_image': custom_fanart, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
-				if custom_poster: cm_append(('[B]Delete Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
-					'custom_image': custom_poster})))
-				if custom_fanart: cm_append(('[B]Delete Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
-					'custom_image': custom_fanart})))
+				if custom_poster: cm_append(('[B]Delete Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image', 'custom_image': custom_poster})))
+				if custom_fanart: cm_append(('[B]Delete Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image', 'custom_image': custom_fanart})))
 				listitem = make_listitem()
 				listitem.setLabel(display)
 				listitem.setArt({'icon': poster, 'poster': poster, 'thumb': poster, 'fanart': background, 'banner': background})
-				info_tag = listitem.getVideoInfoTag(True)
-				info_tag.setPlot(' ')
+				listitem.getVideoInfoTag(True).setPlot(' ')
 				listitem.addContextMenuItems(cm)
 				yield (url, listitem, True)
 			except: pass
-	handle, trakt_icon, fanart = int(sys.argv[1]), kodi_utils.get_icon('trakt'), kodi_utils.get_addon_fanart()
+	def _new_process():
+		if list_type != 'my_lists': return []
+		url = build_url({'mode': 'tracking.make_new_tracking_list'})
+		new_icon = kodi_utils.get_icon('new')
+		listitem = make_listitem()
+		listitem.setLabel('[I]Make New %s List...[/I]' % provider_name())
+		listitem.setArt({'icon': new_icon, 'poster': new_icon, 'thumb': new_icon, 'fanart': fanart, 'banner': fanart})
+		listitem.getVideoInfoTag(True).setPlot(' ')
+		return [(url, listitem, False)]
+	handle, fanart = int(sys.argv[1]), kodi_utils.get_addon_fanart()
+	returning_to_list = False
 	try:
 		list_type, random, shuffle_lists = params['list_type'], params.get('random', 'false') == 'true', params.get('shuffle', 'false') == 'true'
 		build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
+		provider_lists = list_type == 'my_lists'
+		icon_name = 'trakt' if not provider_lists or provider_id() == 1 else 'lists'
+		list_icon = kodi_utils.get_icon(icon_name)
 		profile_path = kodi_utils.addon_profile()
 		all_posters = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'trakt_%s_poster' % list_type))[1]
 		all_fanart = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'trakt_%s_fanart' % list_type))[1]
-		returning_to_list = False
-		data = trakt_get_lists(list_type)
+		data = tracking_get_lists(list_type) if provider_lists else trakt_get_lists(list_type)
 		if list_type == 'liked_lists': data = [i['list'] for i in data]
 		if data:
 			if shuffle_lists:
 				returning_to_list = 'build_trakt_lists_contents' in kodi_utils.folder_path()
+				property_name = 'fenlight.tracking.lists.order' if provider_lists else 'fenlight.trakt.lists.order'
 				if returning_to_list:
-					try: data = json.loads(kodi_utils.get_property('fenlight.trakt.lists.order'))
+					try: data = json.loads(kodi_utils.get_property(property_name))
 					except: pass
 				else:
 					shuffle(data)
-					kodi_utils.set_property('fenlight.trakt.lists.order', json.dumps(data))
+					kodi_utils.set_property(property_name, json.dumps(data))
 			else:
-				kodi_utils.clear_property('fenlight.trakt.lists.order')
+				kodi_utils.clear_property('fenlight.tracking.lists.order' if provider_lists else 'fenlight.trakt.lists.order')
 				data.sort(key=lambda k: k['name'])
 			result = list(_process())
-		else: result = list(_new_process())
+		else: result = _new_process()
 		kodi_utils.add_items(handle, result)
 	except: pass
 	kodi_utils.set_content(handle, 'files')
 	kodi_utils.set_category(handle, params.get('category_name', ''))
-	if shuffle_lists and not returning_to_list: kodi_utils.focus_index(0)
+	if params.get('shuffle', 'false') == 'true' and not returning_to_list: kodi_utils.focus_index(0)
 	kodi_utils.end_directory(handle)
 	kodi_utils.set_view_mode('view.main')
 
@@ -243,7 +253,20 @@ def build_trakt_list(params):
 		else:
 			user, slug, list_type = params.get('user'), params.get('slug'), params.get('list_type')
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			if list_type == 'tracking_watchlist':
+				from apis.tracking_api import tracking_watchlist
+				result = []
+				for media_type, output_type in (('movie', 'movie'), ('tvshow', 'show')):
+					for item in tracking_watchlist(media_type, ''):
+						result.append({
+							'type': output_type,
+							'order': len(result),
+							'media_ids': item.get('media_ids', {}),
+							'title': item.get('title', ''),
+							'released': item.get('released', '2050-01-01')
+						})
+			else:
+				result = get_tracking_list_contents(list_type, user, slug, with_auth) if list_type == 'my_lists' else get_trakt_list_contents(list_type, user, slug, with_auth)
 		process_list, total_pages, paginate_start = _paginate_list(result, page_no, paginate_start)
 		if slug in ('new-movie-releases-digital', 'new-tv-shows'):
 			process_list = process_list[:20]
@@ -283,7 +306,7 @@ def make_custom_artwork(params):
 	action, list_name, list_type, user, slug, custom_image = params['action'], params['list_name'], params['list_type'], params['user'], params['list_slug'], params['custom_image']
 	art_type, image_type = ('Posters', 'poster') if action == 'make_poster' else ('Fanart', 'fanart')
 	shuffle_art = kodi_utils.confirm_dialog(
-		heading='Trakt My Lists', text='Use [B]4 Random[/B] %s from List?[CR]OR[CR]Use [B]First 4[/B] %s from List?' % (art_type, art_type),
+		heading='%s My Lists' % provider_name(), text='Use [B]4 Random[/B] %s from List?[CR]OR[CR]Use [B]First 4[/B] %s from List?' % (art_type, art_type),
 		ok_label='4 Random', cancel_label='First 4')
 	if shuffle_art == None: return
 	new_image = trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image, shuffle_art)
@@ -293,7 +316,7 @@ def trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image
 	from modules import metadata
 	from modules.utils import make_image
 	kodi_utils.show_busy_dialog()
-	content = get_trakt_list_contents(list_type, user, slug, True)
+	content = get_tracking_list_contents(list_type, user, slug, True) if list_type == 'my_lists' else get_trakt_list_contents(list_type, user, slug, True)
 	if shuffle_sort_order: shuffle(content)
 	images = []
 	api_key, mpaa, current_time, current_timestamp = tmdb_api_key(), mpaa_region(), get_datetime(), get_current_timestamp()
@@ -301,7 +324,7 @@ def trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image
 		try:
 			tmdb_id = item.get('tmdb_id') or item['media_ids']['tmdb']
 			if not tmdb_id: continue
-			media_type = item.get('type') or media_type_check[trakt_media_type]
+			media_type = item.get('type') or item.get('media_type') or 'movie'
 			if media_type == 'movie': function = metadata.movie_meta
 			else: function = metadata.tvshow_meta
 			meta = function('tmdb_id', tmdb_id, api_key, mpaa, current_time, current_timestamp)

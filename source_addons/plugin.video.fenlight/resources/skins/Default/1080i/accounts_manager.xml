@@ -2,6 +2,7 @@
 <window>
     <onload>SetFocus(2000,0,absolute)</onload>
     <onload>RunPlugin(plugin://plugin.video.fenlight/?mode=accounts.refresh_audio_properties)</onload>
+    <onload>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.refresh_account_properties)</onload>
     <controls>
         <!-- Background -->
         <control type="image">
@@ -440,6 +441,44 @@
                           <property name="setting_description">Revoke authorization of your TorBox account</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=torbox.revoke_authentication)</onclick>
                       </item>
+        <!-- Tracking Provider -->
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Tracking Service</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Selected Service</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tracking.provider_summary)]</property>
+                          <property name="setting_description">Choose MDBList, Trakt or Local only. Switching does not remove either account's saved login details.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=tracking.select_provider)</onclick>
+                      </item>
+        <!-- MDBList -->
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">MDBList</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Connection Status</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mdblist.status)]</property>
+                          <property name="setting_description">Authentication method: $INFO[Window(10000).Property(fenlight.mdblist.auth_method)]</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Connect / Re-authenticate MDBList</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">QR / Device Code</property>
+                          <property name="setting_description">Use MDBList's official Device Code OAuth flow. A QR code, web address and one-time code are shown on screen.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mdblist.mdblist_authenticate&amp;method=device)</onclick>
+                      </item>
         <!-- Trakt -->
                       <item>
                           <visible>Container(2000).HasFocus(5)</visible>
@@ -449,22 +488,35 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(5)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Authenticate Trakt</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">Not Authorized</property>
-                          <property name="setting_description">Run FLAM/Fen Light's existing Trakt authentication flow.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_authenticate)</onclick>
+                          <property name="setting_label">Connection Status</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.status)]</property>
+                          <property name="setting_description">The existing FLAM Trakt account is retained even when MDBList or Local only is selected.</property>
+                          <onclick>noop</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(5)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Trakt Account</property>
+                          <property name="setting_label">Authenticate / Re-authenticate Trakt</property>
                           <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.trakt.user)]</property>
-                          <property name="setting_description">Revoke authorization for the current Trakt account.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_revoke_authentication)</onclick>
-                      </item>                      
+                          <property name="setting_value">QR / Device Code</property>
+                          <property name="setting_description">Run FLAM's existing Trakt QR-code authentication flow without changing the selected tracking service.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=trakt.trakt_authenticate)</onclick>
+                      </item>
+        <!-- Local -->
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Local only</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(5)</visible>
+                          <property name="setting_label">Status</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.local.status)]</property>
+                          <property name="setting_description">No remote account is required. Watched state and resume data remain on this Kodi installation.</property>
+                          <onclick>noop</onclick>
+                      </item>
         <!-- Live TV 20 -->
                       <item>
                           <visible>Container(2000).HasFocus(20)</visible>

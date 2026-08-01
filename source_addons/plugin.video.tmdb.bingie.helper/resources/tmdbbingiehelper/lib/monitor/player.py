@@ -8,6 +8,7 @@ from tmdbbingiehelper.lib.addon.plugin import get_condvisibility, get_infolabel,
 
 
 class PlayerScrobbler():
+    """Scrobble through the provider selected by FLAM/Bingie Helper."""
     def __init__(self, trakt_api, total_time):
         self.trakt_api = trakt_api
         self.current_time = 0
@@ -18,6 +19,10 @@ class PlayerScrobbler():
         self.tmdb_type = self.get_playerstring_tmdb_type()
         self.season = int(self.playerstring.get('season') or 0)
         self.episode = int(self.playerstring.get('episode') or 0)
+        try:
+            self.provider = int(get_setting('tracking_provider') or 0)
+        except Exception:
+            self.provider = 0
         self.stopped = False
         self.started = False
         self.syncing = False
@@ -25,47 +30,18 @@ class PlayerScrobbler():
 
     def get_playerstring_tmdb_type(self):
         tmdb_type = self.playerstring.get('tmdb_type')
-        if tmdb_type in ('movie', ):
+        if tmdb_type == 'movie':
             return 'movie'
         if tmdb_type in ('season', 'episode', 'tv'):
             return 'tv'
         return ''
 
-    def is_trakt_authorized(func):
-        """ decorator to check that trakt is authorized  """
-
-        def wrapper(self, *args, **kwargs):
-            if not boolean(get_property('TraktIsAuth')):
-                return
-            if not get_setting('trakt_scrobbling'):
-                return
-            if not self.trakt_api.is_authorized:
-                return
-            if not self.trakt_item:
-                return
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    def is_scrobbling(func):
-        """ decorator to check if available item should be scrobbled """
-
-        def wrapper(self, *args, **kwargs):
-            if self.stopped:
-                return
-            if not self.tmdb_type:
-                return
-            if not self.tmdb_id:
-                return
-            if not self.total_time:
-                return
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
     @property
     def progress(self):
-        return ((self.current_time / self.total_time) * 100)
+        try:
+            return ((self.current_time / self.total_time) * 100)
+        except Exception:
+            return 0
 
     @property
     def playerstring(self):
@@ -80,130 +56,137 @@ class PlayerScrobbler():
         playerstring = get_property('PlayerInfoString')
         if not playerstring:
             return {}
-        return loads(playerstring)
+        try:
+            return loads(playerstring)
+        except Exception:
+            return {}
 
     def is_match(self, tmdb_type, tmdb_id):
-        if f'{self.tmdb_id}' != f'{tmdb_id}':
-            return False
-        if f'{self.tmdb_type}' != f'{tmdb_type}':
-            return False
-        return True
+        return f'{self.tmdb_id}' == f'{tmdb_id}' and f'{self.tmdb_type}' == f'{tmdb_type}'
 
-    @is_scrobbling
+    def available(self):
+        if self.stopped or not self.tmdb_type or not self.tmdb_id or not self.total_time:
+            return False
+        if not get_setting('trakt_scrobbling'):
+            return False
+        # FLAM has its own provider-aware player monitor. Avoid double writes.
+        if boolean(get_property('fenlight.player.active')):
+            return False
+        if self.provider == 2:
+            return False
+        if self.provider == 1:
+            return bool(boolean(get_property('TraktIsAuth')) and self.trakt_api.is_authorized and self.trakt_item)
+        return bool((get_setting('mdblist_access_token', 'str') or get_setting('mdblist_apikey', 'str')) and self.mdblist_item)
+
     def update_time(self, tmdb_type, tmdb_id, current_time):
-        if not self.is_match(tmdb_type, tmdb_id):
+        if self.stopped or not self.is_match(tmdb_type, tmdb_id):
             return
         self.current_time = current_time
 
     @property
     def trakt_item(self):
-        try:
-            return self._trakt_item
-        except AttributeError:
-            self._trakt_item = self.get_trakt_item() or {}
-            return self._trakt_item
-
-    @is_scrobbling
-    def get_trakt_item(self):
         if self.tmdb_type == 'tv':
             if not self.season or not self.episode:
-                return
+                return {}
             return {
                 'show': {'ids': {'tmdb': self.tmdb_id}},
                 'episode': {'season': self.season, 'number': self.episode},
-                'progress': self.progress
-            }
-
+                'progress': self.progress}
         if self.tmdb_type == 'movie':
+            return {'movie': {'ids': {'tmdb': self.tmdb_id}}, 'progress': self.progress}
+        return {}
+
+    @property
+    def mdblist_item(self):
+        if self.tmdb_type == 'tv':
+            if not self.season or not self.episode:
+                return {}
             return {
-                'movie': {'ids': {'tmdb': self.tmdb_id}},
-                'progress': self.progress
-            }
+                'show': {
+                    'ids': {'tmdb': self.tmdb_id},
+                    'season': {
+                        'number': self.season,
+                        'episode': {'number': self.episode}}},
+                'progress': self.progress}
+        if self.tmdb_type == 'movie':
+            return {'movie': {'ids': {'tmdb': self.tmdb_id}}, 'progress': self.progress}
+        return {}
 
-    @is_scrobbling
-    @is_trakt_authorized
-    def trakt_scrobbling(self, method):
-        if method not in ('start', 'stop'):
+    def provider_scrobble(self, method):
+        if not self.available():
             return
-        self.trakt_item['progress'] = self.progress
-        self.trakt_api.get_api_request(
-            f'https://api.trakt.tv/scrobble/{method}',
-            postdata=self.trakt_item,
-            headers=self.trakt_api.headers,
-            method='json'
-        )
+        if self.provider == 1:
+            if method not in ('start', 'stop'):
+                return
+            item = dict(self.trakt_item)
+            item['progress'] = self.progress
+            return self.trakt_api.get_api_request(
+                f'https://api.trakt.tv/scrobble/{method}',
+                postdata=item, headers=self.trakt_api.headers, method='json')
+        from tmdbbingiehelper.lib.api.mdblist.api import MDbList
+        api = MDbList()
+        item = dict(self.mdblist_item)
+        item['progress'] = self.progress
+        item['app_version'] = 'TMDb Bingie Helper'
+        return api.get_api_request(
+            api.get_request_url('scrobble', method),
+            postdata=item, method='json')
 
-    @is_scrobbling
     def start(self, tmdb_type, tmdb_id):
-        if self.started or self.stopped:
+        if self.stopped or not self.is_match(tmdb_type, tmdb_id):
             return
-        if not self.is_match(tmdb_type, tmdb_id):
-            return self.stop(tmdb_type, tmdb_id)
-        self.trakt_scrobbling('start')
+        # MDBList accepts a fresh start after resume; Trakt retains legacy once-only behavior.
+        if self.provider == 1 and self.started:
+            return
+        self.provider_scrobble('start')
         self.started = True
 
-    @is_scrobbling
+    def pause(self, tmdb_type, tmdb_id):
+        if self.stopped or not self.started or not self.is_match(tmdb_type, tmdb_id):
+            return
+        if self.provider == 0:
+            self.provider_scrobble('pause')
+
     def stop(self, tmdb_type, tmdb_id):
-        if not self.started or self.stopped:
+        if not self.started or self.stopped or not self.is_match(tmdb_type, tmdb_id):
             return
-        if not self.is_match(tmdb_type, tmdb_id):
-            return
-        self.trakt_scrobbling('stop') if not self.syncing else None
+        if not self.syncing:
+            if self.provider == 0 and self.progress < 80:
+                self.provider_scrobble('pause')
+            else:
+                self.provider_scrobble('stop')
         self.set_kodi_watched()
         self.update_stats()
-        # TODO: Decide if we allow further scrobbling of item if restarted after stopped
-        # if self.is_match(tmdb_type, tmdb_id):
-        #     return
         self.stopped = True
 
-    @is_scrobbling
-    @is_trakt_authorized
     def update_stats(self):
+        if self.provider != 1 or not self.available():
+            return
         from tmdbbingiehelper.lib.script.method.trakt import get_stats
         from tmdbbingiehelper.lib.addon.consts import LASTACTIVITIES_DATA
         get_property(LASTACTIVITIES_DATA, clear_property=True)
         get_stats()
 
-    @is_scrobbling
     def set_kodi_watched(self):
-        if self.watched_sent or not self.current_time:
+        if self.watched_sent or not self.current_time or self.progress < 80:
             return
-
-        # Only update if progress is 80% or more
-        if self.progress < 80:
-            return
-
         self.watched_sent = True
-
         import tmdbbingiehelper.lib.api.kodi.rpc as rpc
-
         if self.tmdb_type == 'tv':
             tvshowid = rpc.KodiLibrary('tvshow').get_info(
-                info='dbid',
-                imdb_id=self.imdb_id,
-                tmdb_id=self.tmdb_id,
-                tvdb_id=self.tvdb_id)
+                info='dbid', imdb_id=self.imdb_id, tmdb_id=self.tmdb_id, tvdb_id=self.tvdb_id)
             if not tvshowid:
                 return
             dbid = rpc.KodiLibrary('episode', tvshowid).get_info(
-                info='dbid',
-                season=self.season,
-                episode=self.episode)
-            if not dbid:
-                return
-            rpc.set_watched(dbid=dbid, dbtype='episode')
+                info='dbid', season=self.season, episode=self.episode)
+            if dbid:
+                rpc.set_watched(dbid=dbid, dbtype='episode')
             return
-
         if self.tmdb_type == 'movie':
             dbid = rpc.KodiLibrary('movie').get_info(
-                info='dbid',
-                imdb_id=self.imdb_id,
-                tmdb_id=self.tmdb_id,
-                tvdb_id=self.tvdb_id)
-            if not dbid:
-                return
-            rpc.set_watched(dbid=dbid, dbtype='movie')
-            return
+                info='dbid', imdb_id=self.imdb_id, tmdb_id=self.tmdb_id, tvdb_id=self.tvdb_id)
+            if dbid:
+                rpc.set_watched(dbid=dbid, dbtype='movie')
 
 
 class PlayerItem():
@@ -427,6 +410,9 @@ class PlayerMonitor(Player, CommonMonitorFunctions):
         self.scrobbler_stop()
         self.reset_properties()
 
+    def onPlayBackPaused(self):
+        self.scrobbler_pause()
+
     def onPlayBackResumed(self):
         self.scrobbler_start()
 
@@ -445,6 +431,11 @@ class PlayerMonitor(Player, CommonMonitorFunctions):
         if not self.scrobbler:
             return
         self.scrobbler.start(self.tmdb_type, self.tmdb_id)
+
+    def scrobbler_pause(self):
+        if not self.scrobbler:
+            return
+        self.scrobbler.pause(self.tmdb_type, self.tmdb_id)
 
     def scrobbler_stop(self):
         if not self.scrobbler:

@@ -1,6 +1,9 @@
+import time
+import requests
+
 from tmdbbingiehelper.lib.api.request import RequestAPI
 from tmdbbingiehelper.lib.api.api_keys.mdblist import API_KEY
-from tmdbbingiehelper.lib.addon.plugin import ADDONPATH
+from tmdbbingiehelper.lib.addon.plugin import ADDONPATH, get_setting, set_setting
 from tmdbbingiehelper.lib.items.itemlist import ItemListPagination, ListPagination
 
 
@@ -81,17 +84,81 @@ class MDbListRatingMapping():
 
 
 class MDbList(RequestAPI):
+    """MDBList API client with OAuth bearer support and API-key fallback.
+
+    FLAM owns authentication and synchronises its credentials into the helper's
+    hidden settings. Existing standalone API-key use remains fully supported.
+    """
 
     api_key = API_KEY
+    token_endpoint = 'https://api.mdblist.com/oauth/token/'
 
-    def __init__(self, api_key=None):
-        api_key = api_key or self.api_key
+    def __init__(self, api_key=None, access_token=None, refresh_token=None, token_expires=None, client_id=None):
+        saved_api_key = get_setting('mdblist_apikey', 'str')
+        self.api_key = api_key if api_key is not None else (saved_api_key or self.api_key)
+        self.access_token = access_token if access_token is not None else get_setting('mdblist_access_token', 'str')
+        self.refresh_token = refresh_token if refresh_token is not None else get_setting('mdblist_refresh_token', 'str')
+        self.client_id = client_id if client_id is not None else get_setting('mdblist_client_id', 'str')
+        saved_expiry = token_expires if token_expires is not None else get_setting('mdblist_token_expires', 'str')
+        try:
+            self.token_expires = float(saved_expiry or 0)
+        except (TypeError, ValueError):
+            self.token_expires = 0
 
+        if self.access_token and self.token_expires and time.time() >= self.token_expires - 300:
+            self._refresh_access_token()
+
+        req_api_key = '' if self.access_token else (f'apikey={self.api_key}' if self.api_key else '')
         super(MDbList, self).__init__(
-            req_api_key=f'apikey={api_key}',
+            req_api_key=req_api_key,
             req_api_name='MDbList.v2',
-            req_api_url='https://api.mdblist.com')  # OLD API = https://mdblist.com/api
-        MDbList.api_key = api_key
+            req_api_url='https://api.mdblist.com')
+        self.headers = {'Authorization': f'Bearer {self.access_token}'} if self.access_token else None
+        MDbList.api_key = self.api_key
+
+    @property
+    def is_authorized(self):
+        return bool(self.access_token or self.api_key)
+
+    def _refresh_access_token(self):
+        if not self.refresh_token or not self.client_id:
+            self.access_token = ''
+            return False
+        try:
+            response = requests.post(
+                self.token_endpoint,
+                data={
+                    'grant_type': 'refresh_token',
+                    'refresh_token': self.refresh_token,
+                    'client_id': self.client_id},
+                headers={'Accept': 'application/json'},
+                timeout=15)
+            if response.status_code < 200 or response.status_code >= 300:
+                self.access_token = ''
+                return False
+            payload = response.json()
+            access_token = payload.get('access_token')
+            if not access_token:
+                self.access_token = ''
+                return False
+            self.access_token = access_token
+            self.refresh_token = payload.get('refresh_token') or self.refresh_token
+            try:
+                self.token_expires = time.time() + int(payload.get('expires_in', 2592000))
+            except (TypeError, ValueError):
+                self.token_expires = time.time() + 2592000
+            set_setting('mdblist_access_token', self.access_token, 'str')
+            set_setting('mdblist_refresh_token', self.refresh_token, 'str')
+            set_setting('mdblist_token_expires', str(int(self.token_expires)), 'str')
+            return True
+        except Exception:
+            self.access_token = ''
+            return False
+
+    def get_api_request(self, request=None, postdata=None, headers=None, method=None):
+        return super(MDbList, self).get_api_request(
+            request=request, postdata=postdata,
+            headers=headers or self.headers, method=method)
 
     def modify_static_list(self, list_id, media_type, media_id, media_provider='tmdb', action='add'):
         item = {f'{media_type}s': [{media_provider: media_id}]}
@@ -99,7 +166,7 @@ class MDbList(RequestAPI):
         return self.get_api_request(path, postdata=item, method='json')
 
     def get_details(self, media_type, media_id, media_provider='tmdb'):
-        return self.get_request_sc(media_provider, media_type, media_id)  # TODO: Add append_to_response=review ?
+        return self.get_request_sc(media_provider, media_type, media_id)
 
     def get_ratings(self, media_type, media_id, media_provider='tmdb'):
         response = self.get_details(media_type, media_id, media_provider=media_provider)

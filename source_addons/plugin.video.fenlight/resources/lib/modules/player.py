@@ -3,6 +3,7 @@ import xbmc
 import json
 from threading import Thread
 from apis.trakt_api import make_trakt_slug
+from apis.tracking_api import tracking_scrobble
 from caches.settings_cache import get_setting
 from modules import kodi_utils as ku, settings as st, watched_status as ws
 # logger = ku.logger
@@ -77,6 +78,10 @@ class FenLightPlayer(xbmc.Player):
 			ku.hide_busy_dialog()
 			ku.sleep(1000)
 			if st.auto_enable_subs(): self.showSubtitles(True)
+			try:
+				self.total_time, self.curr_time = self.getTotalTime(), self.getTime()
+				tracking_scrobble('start', self.media_type, self.tmdb_id, float(self.curr_time/self.total_time * 100), self.season, self.episode)
+			except: pass
 			while self.isPlayingVideo():
 				try:
 					if not ensure_dialog_dead:
@@ -98,6 +103,8 @@ class FenLightPlayer(xbmc.Player):
 						if self.current_point >= final_chapter: self.run_movie_stingers()
 				except: pass
 			ku.hide_busy_dialog()
+			try: tracking_scrobble('stop', self.media_type, self.tmdb_id, self.current_point, self.season, self.episode)
+			except: pass
 			if not self.media_marked: self.media_watched_marker()
 			self.clear_playback_properties()
 			self.clear_playing_item()
@@ -232,6 +239,7 @@ class FenLightPlayer(xbmc.Player):
 			self.meta_get, self.kodi_monitor, self.playback_percent = self.meta.get, ku.kodi_monitor(), self.sources_object.playback_percent or 0.0
 			self.playing_filename = self.sources_object.playing_filename
 			self.media_marked, self.nextep_info_gathered, self.movie_stingers_run = False, False, False
+			self.current_point = float(self.playback_percent or 0.0)
 			self.playback_successful, self.cancel_all_playback = None, False
 			self.playing_item = self.sources_object.playing_item
 
@@ -240,12 +248,14 @@ class FenLightPlayer(xbmc.Player):
 			trakt_ids = {'tmdb': self.tmdb_id, 'imdb': self.imdb_id, 'slug': make_trakt_slug(self.title)}
 			if self.media_type == 'episode': trakt_ids['tvdb'] = self.tvdb_id
 			ku.set_property('script.trakt.ids', json.dumps(trakt_ids))
+			ku.set_property('fenlight.player.active', 'true')
 			if self.playing_filename: ku.set_property('subs.player_filename', self.playing_filename)
 		except: pass
 
 	def clear_playback_properties(self):
 		ku.clear_property('fenlight.window_stack')
 		ku.clear_property('script.trakt.ids')
+		ku.clear_property('fenlight.player.active')
 		ku.clear_property('subs.player_filename')
 
 	def clear_playing_item(self):

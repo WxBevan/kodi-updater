@@ -415,31 +415,36 @@ def random_choice(params):
 	exec('EpisodeTools(meta).%s()' % choice)
 
 def trakt_manager_choice(params):
-	if not settings.trakt_user_active(): return kodi_utils.notification('No Active Trakt Account', 3500)
+	from apis import tracking_api
+	if tracking_api.provider_id() == 2:
+		return kodi_utils.notification('Local-only tracking has no remote list manager', 3500)
+	if not tracking_api.provider_active(True): return
 	tmdb_id, tvdb_id, imdb_id, media_type = params['tmdb_id'], params['tvdb_id'], params['imdb_id'], params['media_type']
-	icon = params.get('icon', None) or kodi_utils.get_icon('trakt')
+	icon = params.get('icon', None) or kodi_utils.get_icon('trakt' if tracking_api.provider_id() == 1 else 'lists')
 	choices = [('Add to [B]Watchlist[/B]', 'add_watchlist'), ('Remove from [B]Watchlist[/B]', 'remove_watchlist'),
 				('Add to [B]Collection[/B]', 'add_collection'), ('Remove from [B]Collection[/B]', 'remove_collection'),
 				('Add To [B]Personal List[/B]...', 'add'), ('Remove from [B]Personal List[/B]...', 'remove')]
+	if tracking_api.provider_id() == 0:
+		choices.append(('Rate on [B]MDBList[/B]...', 'rate'))
 	list_items = [{'line1': item[0], 'icon': icon} for item in choices]
-	kwargs = {'items': json.dumps(list_items), 'heading': 'Trakt Lists Manager'}
+	kwargs = {'items': json.dumps(list_items), 'heading': '%s Lists Manager' % tracking_api.provider_name()}
 	choice = kodi_utils.select_dialog([i[1] for i in choices], **kwargs)
 	if choice == None: return
-	from apis import trakt_api
+	if choice == 'rate': return tracking_api.rate_item(params)
 	if media_type == 'movie': key, media_key, media_id = ('movies', 'tmdb', int(tmdb_id))
 	else:
 		key = 'shows'
 		media_ids = [(tmdb_id, 'tmdb'), (imdb_id, 'imdb'), (tvdb_id, 'tvdb')]
 		media_id, media_key = next(item for item in media_ids if item[0] not in ('None', None, ''))
-		if media_id in (tmdb_id, tvdb_id): media_id = int(media_id)
+		if media_key in ('tmdb', 'tvdb'): media_id = int(media_id)
 	data = {key: [{'ids': {media_key: media_id}}]}
-	if choice == 'add_watchlist': return trakt_api.add_to_watchlist(data)
-	if choice == 'remove_watchlist': return trakt_api.remove_from_watchlist(data)
-	if choice == 'add_collection': return trakt_api.add_to_collection(data)
-	if choice == 'remove_collection': return trakt_api.remove_from_collection(data)
-	selected = trakt_api.get_trakt_list_selection(['personal'])
+	if choice == 'add_watchlist': return tracking_api.add_to_watchlist(data)
+	if choice == 'remove_watchlist': return tracking_api.remove_from_watchlist(data)
+	if choice == 'add_collection': return tracking_api.add_to_collection(data)
+	if choice == 'remove_collection': return tracking_api.remove_from_collection(data)
+	selected = tracking_api.get_tracking_list_selection(['personal'])
 	if selected == None: return
-	trakt_api.add_to_list(selected['user'], selected['slug'], data) if choice == 'add' else trakt_api.remove_from_list(selected['user'], selected['slug'], data)
+	tracking_api.add_to_list(selected['user'], selected['slug'], data) if choice == 'add' else tracking_api.remove_from_list(selected['user'], selected['slug'], data)
 
 def episode_groups_choice(params):
 	from modules.metadata import episode_groups

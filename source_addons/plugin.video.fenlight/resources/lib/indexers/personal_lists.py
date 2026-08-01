@@ -191,15 +191,16 @@ def make_new_personal_list(params):
 	is_retry, external_creation = params.get('is_retry', False), params.get('external_creation', 'false') == 'true'
 	chosen_list, suggested_list_name, suggested_author = params.get('chosen_list', []), params.get('suggested_list_name', ''), params.get('suggested_author', '')
 	if not external_creation and not is_retry and kodi_utils.confirm_dialog(
-		heading='Personal Lists',text='Import a Trakt List to populate this new list?', ok_label='Yes', cancel_label='No'):
-		from apis.trakt_api import get_trakt_list_selection
-		chosen_list = get_trakt_list_selection(['default', 'personal', 'liked'])
+		heading='Personal Lists',text='Import a %s list to populate this new list?' % settings.tracking_provider_name(), ok_label='Yes', cancel_label='No'):
+		from apis.tracking_api import get_tracking_list_selection, provider_id
+		included_lists = ['default', 'personal'] + (['liked'] if provider_id() == 1 else [])
+		chosen_list = get_tracking_list_selection(included_lists)
 		if chosen_list == None: return None, None
 		params['chosen_list'] = chosen_list
 		suggested_list_name = chosen_list.get('name')
 		suggested_author = chosen_list.get('user')
 		params.update({'suggested_list_name': suggested_list_name, 'suggested_author': suggested_author, 'chosen_list': chosen_list})
-		if suggested_author in ('Collection', 'Watchlist'): suggested_author = get_setting('fenlight.trakt.user')
+		if suggested_author in ('Collection', 'Watchlist'): suggested_author = settings.tracking_provider_name()
 	list_name = personal_list_name(suggested_list_name)
 	if list_name == None: return None, None
 	author = personal_list_author(suggested_author)
@@ -233,7 +234,7 @@ def adjust_personal_list_properties(params):
 	if poster: choices.append(('Delete Custom Poster', '', 'delete_poster'))
 	if fanart: choices.append(('Delete Custom Fanart', '', 'delete_fanart'))
 	choices.extend([('Empty List Contents', 'Delete All Contents of %s' % list_name, 'empty_contents'),
-					('Import Trakt List', 'Import a Trakt List into %s' % list_name, 'import_trakt')])
+					('Import Tracking List', 'Import a %s list into %s' % (settings.tracking_provider_name(), list_name), 'import_trakt')])
 	list_items = [{'line1': item[0], 'line2': item[1] or item[0]} for item in choices]
 	kwargs = {'items': json.dumps(list_items), 'heading': 'Personal List Properties', 'multi_line': 'true', 'narrow_window': 'true'}
 	action = kodi_utils.select_dialog([i[2] for i in choices], **kwargs)
@@ -354,19 +355,20 @@ def import_trakt_list(params):
 	list_name, author, description, sort_order, seen = params['list_name'], params['author'], params['description'], params['sort_order'], params['seen']
 	poster, fanart = params['poster'], params['fanart']
 	if not list_change_warning(list_name): return
-	from apis.trakt_api import get_trakt_list_selection, trakt_fetch_collection_watchlist, get_trakt_list_contents
-	chosen_list = get_trakt_list_selection(['default', 'personal', 'liked'])
+	from apis.tracking_api import get_tracking_list_selection, provider_id
+	included_lists = ['default', 'personal'] + (['liked'] if provider_id() == 1 else [])
+	chosen_list = get_tracking_list_selection(included_lists)
 	if chosen_list == None: return
 	trakt_list_name = chosen_list.get('name')
 	new_contents = process_trakt_list(chosen_list)
 	result = personal_lists_cache.add_many_list_items(list_name, author, new_contents)
 	if result == 'Success':
-		if kodi_utils.confirm_dialog(heading='Personal Lists', text='Rename List to Match Trakt List Name?', ok_label='Yes', cancel_label='No'):
+		if kodi_utils.confirm_dialog(heading='Personal Lists', text='Rename List to Match %s List Name?' % settings.tracking_provider_name(), ok_label='Yes', cancel_label='No'):
 			personal_lists_cache.update_single_detail('name', trakt_list_name, list_name, author)
 	kodi_utils.notification(result, 3000)
 
 def process_trakt_list(chosen_list):
-	from apis.trakt_api import trakt_fetch_collection_watchlist, get_trakt_list_contents
+	from apis.tracking_api import tracking_fetch_collection_watchlist, get_tracking_list_contents
 	media_type_check = {'movie': 'movie', 'show': 'tvshow', 'tvshow': 'tvshow'}
 	new_contents = []
 	new_contents_append = new_contents.append
@@ -374,7 +376,7 @@ def process_trakt_list(chosen_list):
 	trakt_list_type, trakt_list_name = chosen_list.get('list_type'), chosen_list.get('name')
 	if trakt_list_type in ('collection', 'watchlist'):
 		trakt_media_type = chosen_list.get('media_type')
-		result = trakt_fetch_collection_watchlist(trakt_list_type, trakt_media_type)
+		result = tracking_fetch_collection_watchlist(trakt_list_type, trakt_media_type)
 		try:
 			sort_order = settings.lists_sort_order(trakt_list_type)
 			if sort_order == 0: result = sort_for_article(result, 'title', settings.ignore_articles())
@@ -382,7 +384,7 @@ def process_trakt_list(chosen_list):
 			else: result.sort(key=lambda k: k.get('released'), reverse=True)
 		except: pass
 	else:
-		result = get_trakt_list_contents(trakt_list_type, chosen_list.get('user'), chosen_list.get('slug'), trakt_list_type == 'my_lists')
+		result = get_tracking_list_contents(trakt_list_type, chosen_list.get('user'), chosen_list.get('slug'), trakt_list_type == 'my_lists')
 		try: result.sort(key=lambda k: (k['order']))
 		except: pass
 	for count, item in enumerate(result):

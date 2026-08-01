@@ -84,7 +84,23 @@ def sync_settings(params={}):
 	insert_list = []
 	insert_list_append = insert_list.append
 	currentsettings = settings_cache.get_all()
+	# One-time provider migration. New installs get MDBList (default 0). Existing
+	# installs keep Trakt when it was the active watched provider; otherwise they
+	# remain local until the user explicitly authorizes MDBList.
+	if currentsettings and 'tracking.provider' not in currentsettings:
+		legacy_trakt = currentsettings.get('trakt.user') not in (None, '', 'empty_setting')
+		legacy_provider = currentsettings.get('watched_indicators', '0')
+		provider = '1' if legacy_trakt and legacy_provider == '1' else '2'
+		settings_cache.set('tracking.provider', provider)
+		currentsettings['tracking.provider'] = provider
 	d_settings = default_settings()
+	# Existing installations may already contain an empty MDBList Client ID
+	# placeholder. Fill only empty values with FLAM's bundled Device Code client
+	# ID, while preserving any custom override entered by the user.
+	bundled_mdblist_client_id = next((i['setting_default'] for i in d_settings if i['setting_id'] == 'mdblist.client_id'), '')
+	if currentsettings and currentsettings.get('mdblist.client_id') in (None, '', '0', 'empty_setting') and bundled_mdblist_client_id:
+		settings_cache.set('mdblist.client_id', bundled_mdblist_client_id)
+		currentsettings['mdblist.client_id'] = bundled_mdblist_client_id
 	defaultsettings_ids = [i['setting_id'] for i in d_settings]
 	defaultsettings_names = [i['setting_id'] for i in d_settings if 'settings_options' in i]
 	defaultsettings_ids.extend(['%s_name' % i for i in defaultsettings_names])
@@ -204,9 +220,14 @@ def default_settings():
 {'setting_id': 'update.delay', 'setting_type': 'action', 'setting_default': '10', 'min_value': '10', 'max_value': '300'},
 {'setting_id': 'update.username', 'setting_type': 'string', 'setting_default': ''},
 {'setting_id': 'update.location', 'setting_type': 'string', 'setting_default': ''},
-#==================== Watched Indicators
+#==================== Tracking Provider
+{'setting_id': 'tracking.provider', 'setting_type': 'action', 'setting_default': '1', 'settings_options': {'0': 'MDBList', '1': 'Trakt', '2': 'Local only'}},
+{'setting_id': 'tracking.sync_interval', 'setting_type': 'action', 'setting_default': '60', 'min_value': '5', 'max_value': '600'},
+{'setting_id': 'tracking.refresh_widgets', 'setting_type': 'boolean', 'setting_default': 'true'},
+# Legacy compatibility. Do not remove: old skins and existing settings DBs may
+# still refer to this ID. Runtime selection now uses tracking.provider.
 {'setting_id': 'watched_indicators', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Fen Light', '1': 'Trakt'}},
-#======+============= Trakt Cache
+#======+============= Trakt Cache (legacy aliases retained)
 {'setting_id': 'trakt.sync_interval', 'setting_type': 'action', 'setting_default': '60', 'min_value': '5', 'max_value': '600'},
 {'setting_id': 'trakt.refresh_widgets', 'setting_type': 'boolean', 'setting_default': 'true'},
 #==================== UTC Time Offset
@@ -313,6 +334,15 @@ def default_settings():
 #=====================================================================================#
 #====================================META ACCOUNTS====================================#
 #=====================================================================================#
+#==================== MDBList
+{'setting_id': 'mdblist.apikey', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'mdblist.client_id', 'setting_type': 'string', 'setting_default': 'C8zkrMF6q6hXgVQ9PWJxBmh6SfvOkcyWOGRez8yZ'},
+{'setting_id': 'mdblist.access_token', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'mdblist.refresh_token', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'mdblist.expires', 'setting_type': 'string', 'setting_default': '0'},
+{'setting_id': 'mdblist.auth_method', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'mdblist.user', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'mdblist.last_sync', 'setting_type': 'string', 'setting_default': '0'},
 #==================== Trakt
 {'setting_id': 'trakt.user', 'setting_type': 'string', 'setting_default': 'empty_setting'},
 {'setting_id': 'trakt.client', 'setting_type': 'string', 'setting_default': '09c4586ff7f270ca1669c76dab5e6d368a9e98212adfd6b1800ef53b9b47448e'},

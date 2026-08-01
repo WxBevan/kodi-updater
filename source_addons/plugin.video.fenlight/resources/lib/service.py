@@ -11,8 +11,8 @@ from modules import kodi_utils
 pause_services_prop = 'fenlight.pause_services'
 firstrun_update_prop = 'fenlight.firstrun_update'
 current_skin_prop = 'fenlight.current_skin'
-trakt_service_string = 'TraktMonitor Service Update %s - %s'
-trakt_success_line_dict = {'success': 'Trakt Update Performed', 'no account': '(Unauthorized) Trakt Update Performed'}
+tracking_service_string = 'TrackingMonitor Service Update %s - %s'
+tracking_success_line_dict = {'success': 'Tracking Update Performed', 'no account': '(Unauthorized) Tracking Update Skipped', 'local': 'Local Tracking Active'}
 update_string = 'Next Update in %s minutes...'
 
 class DeviceCapabilities:
@@ -320,32 +320,35 @@ class CustomFonts:
 		except: pass
 		return kodi_utils.logger('Fen Light', 'CustomFonts Service Finished')
 
-class TraktMonitor:
+class TrackingMonitor:
 	def run(self):
-		kodi_utils.logger('Fen Light', 'TraktMonitor Service Starting')
-		from apis.trakt_api import trakt_sync_activities
-		from modules.settings import trakt_sync_interval
+		kodi_utils.logger('Fen Light', 'TrackingMonitor Service Starting')
+		from apis.tracking_api import tracking_sync_activities, provider_name, sync_helper_settings
+		from modules.settings import tracking_sync_interval
+		sync_helper_settings()
 		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
 		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
 		while not monitor.abortRequested():
 			while is_playing() or kodi_utils.get_property(pause_services_prop) == 'true': wait_for_abort(10)
 			wait_time = 1800
 			try:
-				sync_interval, wait_time = trakt_sync_interval()
+				sync_interval, wait_time = tracking_sync_interval()
 				next_update_string = update_string % sync_interval
-				status = trakt_sync_activities()
-				if status == 'failed': kodi_utils.logger('Fen Light', trakt_service_string % ('Failed. Error from Trakt', next_update_string))
+				status = tracking_sync_activities()
+				if status == 'failed': kodi_utils.logger('Fen Light', tracking_service_string % ('Failed. Error from %s' % provider_name(), next_update_string))
 				else:
-					if status in ('success', 'no account'): kodi_utils.logger('Fen Light', trakt_service_string % ('Success. %s' % trakt_success_line_dict[status], next_update_string))
-					else: kodi_utils.logger('Fen Light', trakt_service_string % ('Success. No Changes Needed', next_update_string))# 'not needed'
-					if status == 'success' and get_setting('fenlight.trakt.refresh_widgets', 'false') == 'true': kodi_utils.run_plugin({'mode': 'kodi_refresh'})
-			except Exception as e: kodi_utils.logger('Fen Light', trakt_service_string % ('Failed', 'The following Error Occured: %s' % str(e)))
+					message = tracking_success_line_dict.get(status, 'No Changes Needed')
+					kodi_utils.logger('Fen Light', tracking_service_string % ('Success. %s (%s)' % (message, provider_name()), next_update_string))
+					if status == 'success' and get_setting('fenlight.tracking.refresh_widgets', 'true') == 'true':
+						kodi_utils.set_property('bingie.widgets.tracking.changed', str(time()))
+						kodi_utils.run_plugin({'mode': 'kodi_refresh'})
+			except Exception as e: kodi_utils.logger('Fen Light', tracking_service_string % ('Failed', 'The following Error Occurred: %s' % str(e)))
 			wait_for_abort(wait_time)
 		try: del monitor
 		except: pass
 		try: del player
 		except: pass
-		return kodi_utils.logger('Fen Light', 'TraktMonitor Service Finished')
+		return kodi_utils.logger('Fen Light', 'TrackingMonitor Service Finished')
 
 class UpdateCheck:
 	def run(self):
@@ -507,7 +510,7 @@ class FenLightMonitor(Monitor):
 		DeviceCapabilities().run()
 		AddonXMLCheck().run()
 		Thread(target=CustomFonts().run).start()
-		Thread(target=TraktMonitor().run).start()
+		Thread(target=TrackingMonitor().run).start()
 		## FLAM private build: disable built-in Fen Light GitHub updater.
 		## Thread(target=UpdateCheck().run).start()
 		Thread(target=WidgetRefresher().run).start()

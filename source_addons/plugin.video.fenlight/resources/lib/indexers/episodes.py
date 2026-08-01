@@ -109,7 +109,7 @@ def build_episode_list(params):
 	perform_cm_sort = cm_sort_order != settings.cm_default_order()
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
 	playback_key = settings.playback_key()
-	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
+	watched_title = settings.tracking_provider_name() if watched_indicators in (1, 2) else 'FLAM Local'
 	meta = tvshow_meta('tmdb_id', params.get('tmdb_id'), settings.tmdb_api_key(), settings.mpaa_region(), current_date)
 	meta_get = meta.get
 	tmdb_id, tvdb_id, imdb_id, tvshow_plot, orig_title = meta_get('tmdb_id'), meta_get('tvdb_id'), meta_get('imdb_id'), meta_get('plot'), meta_get('original_title')
@@ -359,13 +359,13 @@ def build_single_episode(list_type, params={}):
 		if settings.nextep_limit_history(): data = data[:settings.nextep_limit()]
 		hidden_list = ws.get_hidden_progress_items(watched_indicators)
 		if hidden_list: data = [i for i in data if not i['media_ids']['tmdb'] in hidden_list]
-		if watched_indicators == 1: resformat, resinsert, list_type = '%Y-%m-%dT%H:%M:%S.%fZ', '2000-01-01T00:00:00.000Z', 'episode.next_trakt'
+		if watched_indicators in (1, 2): resformat, resinsert, list_type = '%Y-%m-%dT%H:%M:%S.%fZ', '2000-01-01T00:00:00.000Z', 'episode.next_tracking'
 		else: resformat, resinsert, list_type = '%Y-%m-%d %H:%M:%S', '2000-01-01 00:00:00', 'episode.next_fenlight'
 		if include_unwatched != 0:
 			if include_unwatched in (1, 3):
-				from apis.trakt_api import trakt_watchlist
+				from apis.tracking_api import tracking_watchlist
 				try:
-					watchlist = trakt_watchlist('tvshow', '')
+					watchlist = tracking_watchlist('tvshow', '')
 					unwatched.extend([{'media_ids': i['media_ids'], 'season': 1, 'episode': 0, 'unwatched': True, 'title': i['title']} for i in watchlist])
 				except: pass
 			if include_unwatched in (2, 3):

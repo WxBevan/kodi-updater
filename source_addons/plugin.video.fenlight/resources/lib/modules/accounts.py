@@ -227,7 +227,9 @@ def generate_iptv(params=None):
                 'Catalogue channels: %s[CR]'
                 'Disabled channels: %s[CR]'
                 'Stream variants: %s[CR]'
-                'Dropped/review items: %s[CR][CR]'
+                'Dropped/review items: %s[CR]'
+                'Generation mode: %s[CR]'
+                'Reference source: %s[CR][CR]'
                 'M3U:[CR]%s[CR][CR]'
                 'EPG:[CR]%s[CR][CR]'
                 'Catalogue:[CR]%s[CR][CR]'
@@ -240,6 +242,8 @@ def generate_iptv(params=None):
                 result.get('disabled', 'unknown'),
                 result.get('stream_variants', 'unknown'),
                 result.get('dropped', 'unknown'),
+                result.get('build_mode', 'full'),
+                result.get('reference_source', 'full matcher'),
                 result.get('playlist', ''),
                 result.get('epg', ''),
                 result.get('catalog', ''),

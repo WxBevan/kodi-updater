@@ -104,30 +104,62 @@ class Navigator:
 
 ## ADDED THIS FUNCTION 
 	def accounts(self):
-		self.category_name = 'Accounts'
+		"""Used Accounts screen with provider selection and non-destructive login controls."""
+		self.category_name = 'Used Accounts'
+		from apis.mdblist_api import mdblist_auth_method, mdblist_has_api_key, mdblist_has_oauth
+		provider_name = s.tracking_provider_name()
+		provider_active = s.tracking_user_active()
+		mdblist_user = get_setting('fenlight.mdblist.user', 'empty_setting')
 		trakt_user = get_setting('fenlight.trakt.user', 'empty_setting')
 		tb_token = get_setting('fenlight.tb.token', 'empty_setting')
 		x_server = get_setting('fenlight.xtream.server', 'empty_setting')
 		x_username = get_setting('fenlight.xtream.username', 'empty_setting')
 		x_password = get_setting('fenlight.xtream.password', 'empty_setting')
-		trakt_status = trakt_user if trakt_user not in ('empty_setting', '', None) else 'Not Authorized'
+		mdblist_connected = mdblist_user not in ('empty_setting', '', None) and (mdblist_has_oauth() or mdblist_has_api_key())
+		trakt_connected = s.trakt_user_active()
+		mdblist_status = 'Connected as %s' % mdblist_user if mdblist_connected else 'Not connected'
+		trakt_status = 'Connected as %s' % trakt_user if trakt_connected else 'Not connected'
+		selected_status = 'Ready' if provider_active else 'Not connected'
+		if provider_name == 'Local only': selected_status = 'No account required'
 		torbox_status = 'Configured' if tb_token not in ('empty_setting', '', None) else 'Not Authorized'
 		server_status = 'Configured' if x_server not in ('empty_setting', '', None) else 'Not Set'
 		username_status = 'Configured' if x_username not in ('empty_setting', '', None) else 'Not Set'
 		password_status = 'Configured' if x_password not in ('empty_setting', '', None) else 'Not Set'
-		self.add({'mode': 'torbox.authenticate', 'isFolder': 'false'}, 'TorBox API Key - %s' % torbox_status, 'torbox')
+
+		self.add({'mode': 'tracking.select_provider', 'isFolder': 'false'},
+			'Selected Tracking Service - %s (%s)' % (provider_name, selected_status), 'lists')
+		self.add({'mode': 'tracking.refresh_account_properties', 'isFolder': 'false'},
+			'MDBList - %s [%s]' % (mdblist_status, mdblist_auth_method()), 'lists')
+		self.add({'mode': 'mdblist.mdblist_authenticate', 'method': 'device', 'isFolder': 'false'},
+			'Connect / Re-authenticate MDBList - QR / Device Code', 'lists')
+		self.add({'mode': 'mdblist.mdblist_authenticate', 'method': 'apikey', 'isFolder': 'false'},
+			'MDBList API Key - %s' % ('Configured' if mdblist_has_api_key() else 'Not configured'), 'lists')
+		if mdblist_has_oauth():
+			self.add({'mode': 'mdblist.mdblist_disconnect_oauth', 'isFolder': 'false'},
+				'Disconnect MDBList OAuth (keep API key)', 'lists')
+		if mdblist_has_api_key():
+			self.add({'mode': 'mdblist.mdblist_remove_api_key', 'isFolder': 'false'},
+				'Remove MDBList API Key (keep OAuth)', 'lists')
+
+		self.add({'mode': 'tracking.refresh_account_properties', 'isFolder': 'false'},
+			'Trakt - %s' % trakt_status, 'trakt')
+		self.add({'mode': 'trakt.trakt_authenticate', 'isFolder': 'false'},
+			'Authenticate / Re-authenticate Trakt - QR / Device Code', 'trakt')
+		if trakt_connected:
+			self.add({'mode': 'trakt.trakt_revoke_authentication', 'isFolder': 'false'},
+				'Revoke Trakt Authorization (keep MDBList)', 'trakt')
+
+		self.add({'mode': 'tracking.force_sync', 'isFolder': 'false'},
+			'Sync %s Now' % provider_name, 'lists')
+		self.add({'mode': 'torbox.authenticate', 'isFolder': 'false'},
+			'TorBox API Key - %s' % torbox_status, 'torbox')
 		if tb_token not in ('empty_setting', '', None):
 			self.add({'mode': 'torbox.revoke_authentication', 'isFolder': 'false'}, 'Revoke TorBox Authorization', 'torbox')
 		self.add({'mode': 'accounts.set_xtream_setting', 'setting_id': 'xtream.server', 'isFolder': 'false'}, 'Xtream Server URL - %s' % server_status, 'live')
 		self.add({'mode': 'accounts.set_xtream_setting', 'setting_id': 'xtream.username', 'isFolder': 'false'}, 'Xtream Username - %s' % username_status, 'live')
 		self.add({'mode': 'accounts.set_xtream_setting', 'setting_id': 'xtream.password', 'isFolder': 'false'}, 'Xtream Password - %s' % password_status, 'live')
 		self.add({'mode': 'accounts.generate_iptv', 'isFolder': 'false'}, 'Generate IPTV', 'live')
-		if trakt_user in ('empty_setting', '', None):
-			self.add({'mode': 'trakt.trakt_authenticate', 'isFolder': 'false'}, 'Authenticate Trakt - Not Authorized', 'trakt')
-		else:
-			self.add({'mode': 'trakt.trakt_revoke_authentication', 'isFolder': 'false'}, 'Trakt Account - %s' % trakt_status, 'trakt')
 		self.end_directory()
-
 
 	def favorites(self):
 		self.add({'mode': 'build_movie_list', 'action': 'favorites_movies', 'name': 'Movies'}, 'Movies', 'movies')
@@ -137,7 +169,9 @@ class Navigator:
 		self.end_directory()
 
 	def my_content(self):
-		if s.trakt_user_active(): self.add({'mode': 'navigator.trakt_lists_personal'}, 'Trakt Lists', 'trakt')
+		provider = s.tracking_provider()
+		if provider != 2 and s.tracking_user_active():
+			self.add({'mode': 'navigator.trakt_lists_personal'}, '%s Lists' % s.tracking_provider_name(), 'trakt' if provider == 1 else 'lists')
 		self.add({'mode': 'navigator.trakt_lists_public'}, 'Trakt Public Lists', 'trakt')
 		if s.tmdblist_user_active(): self.add({'mode': 'tmdblist.get_tmdb_lists'}, 'TMDb Lists', 'tmdb')
 		self.add({'mode': 'personal_lists.get_personal_lists'}, 'Personal Lists', 'lists')
@@ -146,13 +180,20 @@ class Navigator:
 		self.end_directory()
 
 	def trakt_lists_personal(self):
-		self.add({'mode': 'navigator.trakt_collections'}, 'Trakt Collection', 'trakt')
-		self.add({'mode': 'navigator.trakt_watchlists'}, 'Trakt Watchlist', 'trakt')
-		self.add({'mode': 'trakt.list.get_trakt_lists', 'list_type': 'my_lists', 'category_name': 'My Lists'}, 'Trakt My Lists', 'trakt')
-		self.add({'mode': 'trakt.list.get_trakt_lists', 'list_type': 'liked_lists', 'category_name': 'Liked Lists'}, 'Trakt Liked Lists', 'trakt')
-		self.add({'mode': 'navigator.trakt_favorites', 'category_name': 'Favorites'}, 'Trakt Favorites', 'trakt')
-		self.add({'mode': 'navigator.trakt_recommendations', 'category_name': 'Recommended'}, 'Trakt Recommended', 'trakt')
-		self.add({'mode': 'build_my_calendar'}, 'Trakt Calendar', 'trakt')
+		provider = s.tracking_provider()
+		provider_name = s.tracking_provider_name()
+		icon = 'trakt' if provider == 1 else 'lists'
+		if provider == 2 or not s.tracking_user_active():
+			k.notification('No Active Remote Tracking Account', 3500)
+			return self.end_directory()
+		self.add({'mode': 'navigator.trakt_collections'}, '%s Collection' % provider_name, icon)
+		self.add({'mode': 'navigator.trakt_watchlists'}, '%s Watchlist' % provider_name, icon)
+		self.add({'mode': 'trakt.list.get_trakt_lists', 'list_type': 'my_lists', 'category_name': '%s My Lists' % provider_name}, '%s My Lists' % provider_name, icon)
+		if provider == 1:
+			self.add({'mode': 'trakt.list.get_trakt_lists', 'list_type': 'liked_lists', 'category_name': 'Liked Lists'}, 'Trakt Liked Lists', 'trakt')
+			self.add({'mode': 'navigator.trakt_favorites', 'category_name': 'Favorites'}, 'Trakt Favorites', 'trakt')
+			self.add({'mode': 'navigator.trakt_recommendations', 'category_name': 'Recommended'}, 'Trakt Recommended', 'trakt')
+			self.add({'mode': 'build_my_calendar'}, 'Trakt Calendar', 'trakt')
 		self.end_directory()
 
 	def trakt_lists_public(self):
@@ -168,28 +209,29 @@ class Navigator:
 		self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'because_you_watched'}, 'Random Because You Watched', 'because_you_watched')
 		if s.tmdblist_user_active(): self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'tmdb_lists'}, 'Random TMDb Lists', 'tmdb')
 		self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'personal_lists'}, 'Random Personal Lists', 'lists')
-		if s.trakt_user_active():
-			self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'trakt_personal'}, 'Random Trakt Lists (Personal)', 'trakt')
-			self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'trakt_public'}, 'Random Trakt Lists (Public)', 'trakt')
+		if s.tracking_provider() != 2 and s.tracking_user_active():
+			self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'trakt_personal'}, 'Random %s Lists (Personal)' % s.tracking_provider_name(), 'trakt' if s.tracking_provider() == 1 else 'lists')
+		self.add({'mode': 'navigator.build_random_lists', 'menu_type': 'trakt_public'}, 'Random Trakt Lists (Public)', 'trakt')
 		self.end_directory()
 
 	def trakt_collections(self):
-		self.category_name = 'Collection'
-		self.add({'mode': 'build_movie_list', 'action': 'trakt_collection', 'category_name': 'Movies Collection'}, 'Movies Collection', 'trakt')
-		self.add({'mode': 'build_tvshow_list', 'action': 'trakt_collection', 'category_name': 'TV Shows Collection'}, 'TV Shows Collection', 'trakt')
-		self.add({'mode': 'build_movie_list', 'action': 'trakt_collection_lists', 'new_page': 'recent', 'category_name': 'Recently Added Movies'}, 'Recently Added Movies', 'trakt')
-		self.add({'mode': 'build_tvshow_list', 'action': 'trakt_collection_lists', 'new_page': 'recent', 'category_name': 'Recently Added TV Shows'},
-					'Recently Added TV Shows', 'trakt')
-		self.add({'mode': 'build_my_calendar', 'recently_aired': 'true'}, 'Recently Aired Episodes', 'trakt')
+		self.category_name = '%s Collection' % s.tracking_provider_name()
+		icon = 'trakt' if s.tracking_provider() == 1 else 'lists'
+		self.add({'mode': 'build_movie_list', 'action': 'tracking_collection', 'category_name': 'Movies Collection'}, 'Movies Collection', icon)
+		self.add({'mode': 'build_tvshow_list', 'action': 'tracking_collection', 'category_name': 'TV Shows Collection'}, 'TV Shows Collection', icon)
+		self.add({'mode': 'build_movie_list', 'action': 'tracking_collection_lists', 'new_page': 'recent', 'category_name': 'Recently Added Movies'}, 'Recently Added Movies', icon)
+		self.add({'mode': 'build_tvshow_list', 'action': 'tracking_collection_lists', 'new_page': 'recent', 'category_name': 'Recently Added TV Shows'}, 'Recently Added TV Shows', icon)
+		if s.tracking_provider() == 1:
+			self.add({'mode': 'build_my_calendar', 'recently_aired': 'true'}, 'Recently Aired Episodes', 'trakt')
 		self.end_directory()
 
 	def trakt_watchlists(self):
-		self.category_name = 'Watchlist'
-		self.add({'mode': 'build_movie_list', 'action': 'trakt_watchlist', 'category_name': 'Movies Watchlist'}, 'Movies Watchlist', 'trakt')
-		self.add({'mode': 'build_tvshow_list', 'action': 'trakt_watchlist', 'category_name': 'TV Shows Watchlist'}, 'TV Shows Watchlist', 'trakt')
-		self.add({'mode': 'build_movie_list', 'action': 'trakt_watchlist_lists', 'new_page': 'recent', 'category_name': 'Recently Added Movies'}, 'Recently Added Movies', 'trakt')
-		self.add({'mode': 'build_tvshow_list', 'action': 'trakt_watchlist_lists', 'new_page': 'recent', 'category_name': 'Recently Added TV Shows'},
-					'Recently Added TV Shows', 'trakt')
+		self.category_name = '%s Watchlist' % s.tracking_provider_name()
+		icon = 'trakt' if s.tracking_provider() == 1 else 'lists'
+		self.add({'mode': 'build_movie_list', 'action': 'tracking_watchlist', 'category_name': 'Movies Watchlist'}, 'Movies Watchlist', icon)
+		self.add({'mode': 'build_tvshow_list', 'action': 'tracking_watchlist', 'category_name': 'TV Shows Watchlist'}, 'TV Shows Watchlist', icon)
+		self.add({'mode': 'build_movie_list', 'action': 'tracking_watchlist_lists', 'new_page': 'recent', 'category_name': 'Recently Added Movies'}, 'Recently Added Movies', icon)
+		self.add({'mode': 'build_tvshow_list', 'action': 'tracking_watchlist_lists', 'new_page': 'recent', 'category_name': 'Recently Added TV Shows'}, 'Recently Added TV Shows', icon)
 		self.end_directory()
 
 	def trakt_recommendations(self):

@@ -14,6 +14,7 @@ class Movies:
 	'watched_movies': ('modules.watched_status', 'get_watched_items'), 'recent_watched_movies': ('modules.watched_status', 'get_recently_watched')}
 	trakt_main = ('trakt_movies_trending', 'trakt_movies_trending_recent', 'trakt_movies_most_watched', 'trakt_movies_most_favorited', 'trakt_movies_top10_boxoffice')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites')
+	tracking_personal = ('tracking_collection', 'tracking_watchlist', 'tracking_collection_lists', 'tracking_watchlist_lists')
 
 	def __init__(self, params):
 		self.params = params
@@ -68,10 +69,10 @@ class Movies:
 				try: self.list = [i['movie']['ids'] for i in data]
 				except: self.list = [i['ids'] for i in data]
 				if self.action not in ('trakt_movies_top10_boxoffice', 'trakt_recommendations'): self.new_page = {'new_page': str(page_no + 1)}
-			elif self.action in self.trakt_personal:
+			elif self.action in self.trakt_personal + self.tracking_personal:
 				self.id_type = 'trakt_dict'
 				data = function('movies', page_no)
-				if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites'): total_pages = 1
+				if self.action in ('trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites', 'tracking_collection_lists', 'tracking_watchlist_lists'): total_pages = 1
 				else: data, total_pages = self.paginate_list(data, page_no)
 				self.list = [i['media_ids'] for i in data]
 				if total_pages > 2: self.total_pages = total_pages

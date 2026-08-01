@@ -7,9 +7,30 @@ from tmdbbingiehelper.lib.script.method.decorators import is_in_kwargs, get_tmdb
 @is_in_kwargs({'tmdb_type': ['movie', 'tv']})
 @get_tmdb_id
 def sync_trakt(tmdb_type=None, tmdb_id=None, season=None, episode=None, sync_type=None, **kwargs):
-    """ Open sync trakt menu for item """
-    from tmdbbingiehelper.lib.script.sync.menu import sync_trakt_item
-    sync_trakt_item(tmdb_type=tmdb_type, tmdb_id=tmdb_id, season=season, episode=episode, sync_type=sync_type)
+    """Open the selected tracking provider menu/action for an item.
+
+    The command name remains ``sync_trakt`` for backwards compatibility with
+    existing Bingie skin XML and context-menu shortcuts.
+    """
+    from tmdbbingiehelper.lib.addon.plugin import get_setting
+    try:
+        provider = int(get_setting('tracking_provider', 'int'))
+    except (TypeError, ValueError):
+        provider = 0
+    if provider == 1:
+        from tmdbbingiehelper.lib.script.sync.menu import sync_trakt_item
+        return sync_trakt_item(tmdb_type=tmdb_type, tmdb_id=tmdb_id, season=season, episode=episode, sync_type=sync_type)
+
+    import xbmc
+    from urllib.parse import urlencode
+    params = {'mode': 'tracking.helper_sync', 'tmdb_type': tmdb_type, 'tmdb_id': tmdb_id}
+    if season is not None: params['season'] = season
+    if episode is not None: params['episode'] = episode
+    if sync_type: params['sync_type'] = sync_type
+    if sync_type == 'like': params['rating'] = xbmc.getInfoLabel('Skin.String(ThumbsUpRateValue)') or '10'
+    elif sync_type == 'dislike': params['rating'] = xbmc.getInfoLabel('Skin.String(ThumbsDownRateValue)') or '1'
+    elif sync_type == 'reset': params['rating'] = '0'
+    xbmc.executebuiltin('RunPlugin(plugin://plugin.video.fenlight/?%s)' % urlencode(params))
 
 
 @is_in_kwargs({'like_list': True})

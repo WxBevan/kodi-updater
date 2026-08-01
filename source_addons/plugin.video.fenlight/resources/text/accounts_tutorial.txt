@@ -1,12 +1,11 @@
 ACCOUNTS SETUP TUTORIAL
-This guide will show you how to set up TorBox and Trakt inside Kodi.
-
+This guide shows how to set up TorBox and choose a tracking service inside Kodi.
 
 
 TORBOX SETUP
 TorBox is required for playback.
 
-Go to this website:
+Go to:
 https://torbox.app/subscription
 
 Create an account and purchase a subscription.
@@ -14,46 +13,65 @@ At the bottom of the subscription page, enter this referral code for bonus days:
 
 209bc076-4e6b-4352-91e3-070276e5aa76
 
-You can also use this referral link directly:
+You can also use this referral link:
 https://torbox.app/subscription?referral=209bc076-4e6b-4352-91e3-070276e5aa76
 
-Once your account is created, go to:
-
+Then open:
 https://torbox.app/dashboard
 
-Click your profile icon in the top-right corner.
-Click Settings.
-On the settings page, you will see your API Key.
-Copy the API key exactly.
-
-Go back to Kodi and open:
-Accounts > TorBox Authorisation
-Enter your TorBox API key.
-
-Make sure the key is entered exactly, with no missing characters or extra spaces.
+Click your profile icon, choose Settings and copy your API key.
+In Kodi open Accounts > TorBox and enter the key exactly.
 
 
+TRACKING SERVICE
+Open Accounts > Selected Service and choose one of:
 
-TRAKT SETUP
-Trakt is used to sync your watch history, progress, and lists.
+MDBList - the default online tracking service.
+Trakt - optional alternative.
+Local only - saves watched status and progress only on this Kodi device.
 
-Go to this website:
+Changing this selection does not remove the saved MDBList or Trakt login.
+
+
+MDBLIST SETUP - QR / DEVICE CODE
+MDBList officially supports Device Code login for TV devices.
+
+Device Code login requires an MDBList OAuth Client ID registered for this FLAM build.
+The build owner can create a public OAuth application at:
+https://mdblist.com/developer/
+
+In Kodi open:
+Accounts > MDBList > OAuth Client ID
+
+Enter the Client ID, then choose:
+Accounts > Connect / Re-authenticate MDBList
+
+Kodi displays a QR code, web address and one-time code.
+Scan the QR code or visit the address, sign in and approve access.
+
+
+MDBLIST SETUP - API KEY FALLBACK
+An API key can be used instead of Device Code login, or retained as a fallback.
+
+Sign in to MDBList and open:
+https://mdblist.com/preferences/#api
+
+Copy your API key, then in Kodi choose:
+Accounts > Enter / Replace MDBList API Key
+
+OAuth and API-key credentials can coexist. Removing one does not remove the other.
+
+
+TRAKT SETUP - OPTIONAL
+Create a Trakt account at:
 https://trakt.tv/
 
-Create a free Trakt account.
-Once your Trakt account is ready, go back to Kodi.
+In Kodi choose:
+Accounts > Authenticate / Re-authenticate Trakt
 
-Open:
-Accounts -> Authenticate Trakt
-
-Kodi will show a QR code or activation code.
-Scan the QR code with your phone and sign in to your Trakt account.
-Approve the connection.
-
-Once Trakt is authenticated, return to Kodi.
-
+Scan the QR code or enter the activation code and approve the connection.
+Authenticating Trakt does not automatically change the selected tracking service.
 
 
 FINISHED
-After TorBox and Trakt are both set up, movies are ready to use.
-Click Reload on the home page to refresh.
+Choose the required tracking service, run Sync Now, then click Reload on the home page.
