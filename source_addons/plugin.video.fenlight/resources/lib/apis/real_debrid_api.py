@@ -23,71 +23,132 @@ class RealDebridAPI:
 		self.device_code = ''
 		self.refresh_retries = 0
 		self.break_auth_loop = False
+		self.last_error = None
 
 	def auth(self):
 		self.secret = ''
 		self.client_ID = 'X245A4XAIBGVM'
-		url = self.auth_url + 'device/code?%s' % 'client_id=%s&new_credentials=yes' % self.client_ID
-		response = requests.get(url, timeout=20).json()
-		user_code = response['user_code']
-		auth_url = response['direct_verification_url']
-		qr_code = make_qrcode(auth_url) or ''
-		short_url = make_tinyurl(auth_url)
-		copy2clip(auth_url)
-		if short_url: p_dialog_insert = 'OR visit this URL: [B]%s[/B][CR]OR Enter this Code: [B]%s[/B]' % (short_url, user_code)
-		else: p_dialog_insert = 'OR Enter this Code: [B]%s[/B]' % user_code
+		device_url = self.auth_url + 'device/code'
+		try:
+			response = requests.get(
+				device_url,
+				params={'client_id': self.client_ID, 'new_credentials': 'yes'},
+				timeout=20
+			)
+			response.raise_for_status()
+			response = response.json()
+		except Exception as error:
+			self.last_error = 'Real-Debrid device authorization failed: %s' % error
+			ok_dialog(text=self.last_error)
+			return False
+
+		user_code = response.get('user_code')
+		device_code = response.get('device_code')
+		verification_url = response.get('direct_verification_url') or response.get('verification_url')
+		if not user_code or not device_code or not verification_url:
+			self.last_error = 'Real-Debrid returned incomplete device authorization data.'
+			ok_dialog(text=self.last_error)
+			return False
+
+		qr_code = make_qrcode(verification_url) or ''
+		short_url = make_tinyurl(verification_url)
+		copy2clip(verification_url)
+		if short_url:
+			p_dialog_insert = 'OR visit this URL: [B]%s[/B][CR]OR Enter this Code: [B]%s[/B]' % (short_url, user_code)
+		else:
+			p_dialog_insert = 'OR Enter this Code: [B]%s[/B]' % user_code
 		content = 'Please Scan the QR Code%s[CR]' % p_dialog_insert
 		progressDialog = progress_dialog('Real Debrid Authorize', qr_code)
 		progressDialog.update(content, 0)
-		expires_in = int(response['expires_in'])
-		sleep_interval = int(response['interval'])
-		device_code = response['device_code']
-		poll_url = self.auth_url + 'device/credentials?%s' % 'client_id=%s&code=%s' % (self.client_ID, device_code)
-		start, time_passed = time.time(), 0
-		while not progressDialog.iscanceled() and time_passed < expires_in and not self.secret:
+
+		expires_in = int(response.get('expires_in') or 1800)
+		sleep_interval = max(1, int(response.get('interval') or 5))
+		poll_url = self.auth_url + 'device/credentials'
+		start = time.time()
+
+		while not progressDialog.iscanceled() and (time.time() - start) < expires_in and not self.secret:
 			sleep(1000 * sleep_interval)
-			try: response = requests.get(poll_url, timeout=20).json()
-			except: continue
-			if 'error' in response:
+			try:
+				credentials_response = requests.get(
+					poll_url,
+					params={'client_id': self.client_ID, 'code': device_code},
+					timeout=20
+				)
+				credentials = credentials_response.json()
+			except Exception:
+				continue
+
+			if credentials_response.status_code >= 400 or credentials.get('error'):
 				time_passed = time.time() - start
-				progress = int(100 * time_passed/float(expires_in))
+				progress = min(100, int(100 * time_passed / float(expires_in)))
 				progressDialog.update(content, progress)
 				continue
-			try:
-				set_setting('rd.client_id', response['client_id'])
-				set_setting('rd.secret', response['client_secret'])
-				self.secret = response['client_secret']
-				self.client_ID = response['client_id']
-				progressDialog.close()
-			except:
-				ok_dialog(text='Error')
+
+			self.client_ID = credentials.get('client_id') or ''
+			self.secret = credentials.get('client_secret') or ''
+			if self.client_ID and self.secret:
+				set_setting('rd.client_id', self.client_ID)
+				set_setting('rd.secret', self.secret)
 				break
-		try: progressDialog.close()
-		except: pass
-		if self.secret:
-			data = {'client_id': self.client_ID, 'client_secret': self.secret, 'code': device_code, 'grant_type': 'http://oauth.net/grant_type/device/1.0'}
-			url = '%stoken' % self.auth_url
-			response = requests.post(url, data=data, timeout=20).json()
-			self.token = response['access_token']
-			self.refresh = response['refresh_token']
-			username = self.account_info()['username']
+
+		try:
+			progressDialog.close()
+		except Exception:
+			pass
+
+		if not self.secret:
+			return False
+
+		data = {
+			'client_id': self.client_ID,
+			'client_secret': self.secret,
+			'code': device_code,
+			'grant_type': 'http://oauth.net/grant_type/device/1.0'
+		}
+		try:
+			token_response = requests.post(self.auth_url + 'token', data=data, timeout=20)
+			token_data = token_response.json()
+			if token_response.status_code >= 400 or token_data.get('error'):
+				raise RuntimeError(token_data.get('error') or 'HTTP %s' % token_response.status_code)
+			self.token = token_data['access_token']
+			self.refresh = token_data['refresh_token']
 			set_setting('rd.token', self.token)
 			set_setting('rd.refresh', self.refresh)
+			account = self.account_info() or {}
+			username = account.get('username', '') if isinstance(account, dict) else ''
 			set_setting('rd.account_id', username)
 			set_setting('rd.enabled', 'true')
 			ok_dialog(text='Success')
+			return True
+		except Exception as error:
+			self.last_error = 'Real-Debrid token authorization failed: %s' % error
+			ok_dialog(text=self.last_error)
+			return False
 
 	def refresh_token(self):
+		if self.refresh in ('empty_setting', '') or self.secret in ('empty_setting', ''):
+			return False
 		try:
 			url = self.auth_url + 'token'
-			data = {'client_id': self.client_ID, 'client_secret': self.secret, 'code': self.refresh, 'grant_type': 'http://oauth.net/grant_type/device/1.0'}
-			response = requests.post(url, data=data).json()
-			self.token = response['access_token']
-			self.refresh = response['refresh_token']
+			data = {
+				'client_id': self.client_ID,
+				'client_secret': self.secret,
+				'code': self.refresh,
+				'grant_type': 'http://oauth.net/grant_type/device/1.0'
+			}
+			response = requests.post(url, data=data, timeout=20)
+			payload = response.json()
+			if response.status_code >= 400 or payload.get('error'):
+				self.last_error = payload.get('error') or 'HTTP %s' % response.status_code
+				return False
+			self.token = payload['access_token']
+			self.refresh = payload['refresh_token']
 			set_setting('rd.token', self.token)
 			set_setting('rd.refresh', self.refresh)
 			return True
-		except: return False
+		except Exception as error:
+			self.last_error = str(error)
+			return False
 
 	def revoke(self):
 		set_setting('rd.client_id', 'empty_setting')
@@ -105,20 +166,27 @@ class RealDebridAPI:
 	def check_cache(self, hashes):
 		hash_string = '/'.join(hashes)
 		url = 'torrents/instantAvailability/%s' % hash_string
-		return self._get(url)
+		result = self._get(url)
+		if not isinstance(result, dict) or result.get('error'):
+			return {}
+		return result
 
 	def check_hash(self, hash_string):
 		url = 'torrents/instantAvailability/%s' % hash_string
-		return self._get(url)
+		result = self._get(url)
+		if not isinstance(result, dict) or result.get('error'):
+			return {}
+		return result
 
 	def check_single_magnet(self, hash_string):
 		cache_info = self.check_hash(hash_string)
-		cached = False
-		if hash_string in cache_info:
-			info = cache_info[hash_string]
-			if isinstance(info, dict) and len(info.get('rd')) > 0:
-				cached = True
-		return cached
+		if not isinstance(cache_info, dict):
+			return False
+		info = cache_info.get(hash_string) or cache_info.get(hash_string.lower()) or {}
+		if not isinstance(info, dict):
+			return False
+		rd = info.get('rd') or []
+		return bool(rd)
 
 	def torrents_activeCount(self):
 		url = 'torrents/activeCount'
@@ -155,8 +223,9 @@ class RealDebridAPI:
 		url = 'unrestrict/link'
 		post_data = {'link': link}
 		response = self._post(url, post_data)
-		try: return response['download']
-		except: return None
+		if not isinstance(response, dict) or response.get('error'):
+			return None
+		return response.get('download')
 
 	def add_magnet(self, magnet):
 		post_data = {'magnet': magnet}
@@ -165,16 +234,27 @@ class RealDebridAPI:
 		return result
 
 	def create_transfer(self, magnet_url):
+		torrent_id = None
 		try:
-			extensions = supported_video_extensions()
 			torrent = self.add_magnet(magnet_url)
+			if not isinstance(torrent, dict):
+				self.last_error = 'Real-Debrid addMagnet returned no JSON object.'
+				return 'failed'
+			if torrent.get('error') or not torrent.get('id'):
+				self.last_error = torrent.get('error') or 'Real-Debrid addMagnet returned no torrent id.'
+				return 'failed'
+
 			torrent_id = torrent['id']
-			info = self.torrent_info(torrent_id)
-			files = info['files']
-			self.add_torrent_select(torrent_id, 'all')
+			selection = self.add_torrent_select(torrent_id, 'all')
+			if isinstance(selection, dict) and selection.get('error'):
+				self.last_error = selection.get('error')
+				self.delete_torrent(torrent_id)
+				return 'failed'
 			return 'success'
-		except:
-			self.delete_torrent(torrent_id)
+		except Exception as error:
+			self.last_error = str(error)
+			if torrent_id:
+				self.delete_torrent(torrent_id)
 			return 'failed'
 
 	def add_torrent_select(self, torrent_id, file_ids):
@@ -184,108 +264,138 @@ class RealDebridAPI:
 		return self._post(url, post_data)
 
 	def delete_torrent(self, folder_id):
-		if self.token in ('empty_setting', ''): return None
-		url = 'torrents/delete/%s&auth_token=%s' % (folder_id, self.token)
-		response = requests.delete(self.base_url + url, timeout=20)
-		return response
+		if not folder_id or self.token in ('empty_setting', ''):
+			return None
+		return self._delete('torrents/delete/%s' % folder_id)
 
 	def delete_download(self, download_id):
-		if self.token in ('empty_setting', ''): return None
-		url = 'downloads/delete/%s&auth_token=%s' % (download_id, self.token)
-		response = requests.delete(self.base_url + url, timeout=20)
-		return response
+		if not download_id or self.token in ('empty_setting', ''):
+			return None
+		return self._delete('downloads/delete/%s' % download_id)
 
 	def resolve_magnet(self, magnet_url, info_hash, store_to_cloud, title, season, episode):
 		compare_title = re.sub(r'[^A-Za-z0-9]+', '.', title.replace('\'', '').replace('&', 'and').replace('%', '.percent')).lower()
-		attempts, transfer_finished = 0, False
 		extensions = supported_video_extensions()
 		torrent_id = None
 		try:
 			torrent = self.add_magnet(magnet_url)
-			if 'error' in torrent: return None
+			if not isinstance(torrent, dict) or torrent.get('error') or not torrent.get('id'):
+				self.last_error = torrent.get('error') if isinstance(torrent, dict) else 'addMagnet failed'
+				return None
+
 			torrent_id = torrent['id']
-			self.add_torrent_select(torrent_id, 'all')
-			torrent_info = self.user_cloud_info_check(torrent_id)
-			if not torrent_info['links'] or 'error' in torrent_info:
+			selection = self.add_torrent_select(torrent_id, 'all')
+			if isinstance(selection, dict) and selection.get('error'):
+				self.last_error = selection.get('error')
 				self.delete_torrent(torrent_id)
 				return None
-			sleep(200)
-			while attempts < 3 and not transfer_finished:
-				active_count = self.torrents_activeCount()
-				active_list = active_count['list']
-				attempts += 1
-				if info_hash in active_list: sleep(500)
-				else: transfer_finished = True
-			if not transfer_finished:
+
+			torrent_info = self._wait_for_torrent_links(torrent_id)
+			if not torrent_info:
 				self.delete_torrent(torrent_id)
 				return None
-			files = [i for i in torrent_info['files'] if i['selected'] == 1 and i['path'].lower().endswith(tuple(extensions))]
-			selected_files = [(idx, i) for idx, i in enumerate(files)]
-			selected_files = sorted(selected_files, key=lambda x: x[1]['bytes'], reverse=True)
-			match = False
+
+			all_selected = [item for item in torrent_info.get('files', []) if item.get('selected') == 1]
+			links = torrent_info.get('links') or []
+			entries = []
+			for selected_index, item in enumerate(all_selected):
+				if selected_index >= len(links):
+					break
+				if item.get('path', '').lower().endswith(tuple(extensions)):
+					entries.append((selected_index, item, links[selected_index]))
+			entries.sort(key=lambda value: value[1].get('bytes', 0), reverse=True)
+			if not entries:
+				self.delete_torrent(torrent_id)
+				return None
+
+			selected_entry = None
 			if season:
-				correct_files = []
-				correct_file_check = False
-				for value in selected_files:
-					correct_file_check = seas_ep_filter(season, episode, value[1]['path'])
-					if correct_file_check: correct_files.append(value[1]); break
-				if len(correct_files) == 0: match = False
-				else:
-					for i in correct_files:
-						compare_link = seas_ep_filter(season, episode, i['path'], split=True)
-						compare_link = re.sub(compare_title, '', compare_link)
-						extras_filter = extras()
-						if any(x in compare_link for x in extras_filter): continue
-						else: match = True; break
-				if match: index = [i[0] for i in selected_files if i[1]['path'] == correct_files[0]['path']][0]
+				for entry in entries:
+					item = entry[1]
+					if not seas_ep_filter(season, episode, item.get('path', '')):
+						continue
+					compare_link = seas_ep_filter(season, episode, item.get('path', ''), split=True)
+					compare_link = re.sub(compare_title, '', compare_link)
+					if any(value in compare_link for value in extras()):
+						continue
+					selected_entry = entry
+					break
 			else:
-				if self._m2ts_check(selected_files): self.delete_torrent(torrent_id) ; return None
-				for value in selected_files:
-					filename = re.sub(r'[^A-Za-z0-9-]+', '.', value[1]['path'].rsplit('/', 1)[1].replace('\'', '').replace('&', 'and').replace('%', '.percent')).lower()
+				if self._m2ts_check([(entry[0], entry[1]) for entry in entries]):
+					self.delete_torrent(torrent_id)
+					return None
+				for entry in entries:
+					item = entry[1]
+					filename = re.sub(
+						r'[^A-Za-z0-9-]+',
+						'.',
+						item.get('path', '').rsplit('/', 1)[-1].replace('\'', '').replace('&', 'and').replace('%', '.percent')
+					).lower()
 					filename_info = filename.replace(compare_title, '')
-					extras_filter = extras()
-					if any(x in filename_info for x in extras_filter): continue
-					match, index = True, value[0]; break
-			if match:
-				rd_link = torrent_info['links'][index]
-				file_url = self.unrestrict_link(rd_link)
-				if file_url.endswith('rar'): file_url = None
-				if not any(file_url.lower().endswith(x) for x in extensions): file_url = None
-				if not store_to_cloud: Thread(target=self.delete_torrent, args=(torrent_id,)).start()
-				return file_url
-			else: self.delete_torrent(torrent_id)
-		except:
-			if torrent_id: self.delete_torrent(torrent_id)
+					if any(value in filename_info for value in extras()):
+						continue
+					selected_entry = entry
+					break
+
+			if not selected_entry:
+				self.delete_torrent(torrent_id)
+				return None
+
+			file_url = self.unrestrict_link(selected_entry[2])
+			if not file_url:
+				self.delete_torrent(torrent_id)
+				return None
+			path_only = file_url.split('?', 1)[0].lower()
+			if path_only.endswith('.rar') or not any(path_only.endswith(ext.lower()) for ext in extensions):
+				self.delete_torrent(torrent_id)
+				return None
+
+			if not store_to_cloud:
+				Thread(target=self.delete_torrent, args=(torrent_id,)).start()
+			return file_url
+		except Exception as error:
+			self.last_error = str(error)
+			if torrent_id:
+				self.delete_torrent(torrent_id)
 			return None
 
 	def display_magnet_pack(self, magnet_url, info_hash):
+		torrent_id = None
 		try:
-			torrent_id = None
 			torrent = self.add_magnet(magnet_url)
+			if not isinstance(torrent, dict) or torrent.get('error') or not torrent.get('id'):
+				self.last_error = torrent.get('error') if isinstance(torrent, dict) else 'addMagnet failed'
+				return None
+
 			torrent_id = torrent['id']
-			self.add_torrent_select(torrent_id, 'all')
-			torrent_info = self.user_cloud_info_check(torrent_id)
-			if not torrent_info['links'] or 'error' in torrent_info:
+			selection = self.add_torrent_select(torrent_id, 'all')
+			if isinstance(selection, dict) and selection.get('error'):
+				self.last_error = selection.get('error')
 				self.delete_torrent(torrent_id)
 				return None
-			sleep(1000)
-			elapsed_time, transfer_finished = 0, False
-			while elapsed_time <= 4 and not transfer_finished:
-				active_count = self.torrents_activeCount()
-				active_list = active_count['list']
-				elapsed_time += 1
-				if info_hash in active_list: sleep(1000)
-				else: transfer_finished = True
-			if not transfer_finished:
+
+			torrent_info = self._wait_for_torrent_links(torrent_id)
+			if not torrent_info:
 				self.delete_torrent(torrent_id)
 				return None
-			files = [i for i in torrent_info['files'] if i['selected'] == 1]
-			list_file_items = [dict(i, **{'link': torrent_info['links'][idx]}) for idx, i in enumerate(files)]
-			list_file_items = [{'link': i['link'], 'filename': i['path'].replace('/', ''), 'size': i['bytes']} for i in list_file_items]
+
+			files = [item for item in torrent_info.get('files', []) if item.get('selected') == 1]
+			links = torrent_info.get('links') or []
+			list_file_items = []
+			for index, item in enumerate(files):
+				if index >= len(links):
+					break
+				list_file_items.append({
+					'link': links[index],
+					'filename': item.get('path', '').replace('/', ''),
+					'size': item.get('bytes', 0)
+				})
 			self.delete_torrent(torrent_id)
 			return list_file_items
-		except:
-			if torrent_id: self.delete_torrent(torrent_id)
+		except Exception as error:
+			self.last_error = str(error)
+			if torrent_id:
+				self.delete_torrent(torrent_id)
 			return None
 
 	def video_only(self, storage_variant, extensions):
@@ -305,31 +415,85 @@ class RealDebridAPI:
 			if item['path'].endswith('.m2ts'): return True
 		return False
 
+	def _wait_for_torrent_links(self, torrent_id, attempts=20, interval_ms=500):
+		"""Poll the torrent itself; /activeCount only returns nb/limit, not torrent ids."""
+		failure_states = {
+			'magnet_error', 'error', 'virus', 'dead',
+	}
+		last_info = None
+		for _attempt in range(attempts):
+			info = self.torrent_info(torrent_id)
+			if not isinstance(info, dict) or info.get('error'):
+				self.last_error = info.get('error') if isinstance(info, dict) else 'torrent info failed'
+				return None
+			last_info = info
+			status = str(info.get('status') or '').lower()
+			if info.get('links'):
+				return info
+			if status in failure_states:
+				self.last_error = 'Torrent entered failure state: %s' % status
+				return None
+			sleep(interval_ms)
+		self.last_error = 'Timed out waiting for Real-Debrid torrent links.'
+		return last_info if isinstance(last_info, dict) and last_info.get('links') else None
+
+	def _request(self, method, endpoint, data=None, retry_auth=True):
+		if self.token in ('empty_setting', ''):
+			return None
+
+		url = self.base_url + endpoint.lstrip('/')
+		headers = {'Authorization': 'Bearer %s' % self.token}
+		try:
+			response = requests.request(method, url, headers=headers, data=data, timeout=20)
+		except Exception as error:
+			self.last_error = str(error)
+			try:
+				print('[RealDebridAPI] %s %s failed: %s' % (method, endpoint, error))
+			except Exception:
+				pass
+			return {'error': str(error), 'error_code': None, 'http_status': 0}
+
+		if response.status_code == 204 or not response.content:
+			payload = {}
+		else:
+			try:
+				payload = response.json()
+			except Exception:
+				payload = {
+					'error': response.text or 'HTTP %s' % response.status_code,
+					'error_code': None,
+				}
+
+		error_code = payload.get('error_code') if isinstance(payload, dict) else None
+		if response.status_code == 202 and error_code == 31:
+			return {}
+		if retry_auth and (response.status_code == 401 or error_code == 8):
+			if self.refresh_token():
+				return self._request(method, endpoint, data=data, retry_auth=False)
+
+		if response.status_code >= 400:
+			if not isinstance(payload, dict):
+				payload = {'error': 'HTTP %s' % response.status_code}
+			payload.setdefault('error', 'HTTP %s' % response.status_code)
+			payload['http_status'] = response.status_code
+			self.last_error = payload.get('error')
+			try:
+				print(
+					'[RealDebridAPI] %s %s failed: HTTP %s, error=%s, error_code=%s'
+					% (method, endpoint, response.status_code, payload.get('error'), payload.get('error_code'))
+				)
+			except Exception:
+				pass
+		return payload
+
 	def _get(self, url):
-		original_url = url
-		url = self.base_url + url
-		if self.token in ('empty_setting', ''): return None
-		if '?' not in url: url += '?auth_token=%s' % self.token
-		else: url += '&auth_token=%s' % self.token
-		response = requests.get(url, timeout=20)
-		if any(value in response.text for value in ('bad_token', 'Bad Request')):
-			if self.refresh_token(): response = self._get(original_url)
-			else: return None
-		try: return response.json()
-		except: return response
+		return self._request('GET', url)
 
 	def _post(self, url, post_data):
-		original_url = url
-		url = self.base_url + url
-		if self.token in ('empty_setting', ''): return None
-		if '?' not in url: url += '?auth_token=%s' % self.token
-		else: url += '&auth_token=%s' % self.token
-		response = requests.post(url, data=post_data, timeout=20)
-		if any(value in response.text for value in ('bad_token', 'Bad Request')):
-			if self.refresh_token(): response = self._post(original_url, post_data)
-			else: return None
-		try: return response.json()
-		except: return response
+		return self._request('POST', url, data=post_data)
+
+	def _delete(self, url):
+		return self._request('DELETE', url)
 
 	def clear_cache(self, clear_hashes=True):
 		try:
@@ -367,4 +531,3 @@ class RealDebridAPI:
 		return True
 
 RealDebrid = RealDebridAPI()
-
