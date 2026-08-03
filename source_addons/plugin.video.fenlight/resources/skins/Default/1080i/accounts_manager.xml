@@ -50,7 +50,7 @@
                     <textcolor>FFCCCCCC</textcolor>
                     <align>center</align>
                     <aligny>center</aligny>
-                    <label>[UPPERCASE][B]FENLIGHT - ACCOUNTS[/B][/UPPERCASE]</label>
+                    <label>[UPPERCASE][B]FENLIGHT - SETTINGS[/B][/UPPERCASE]</label>
                 </control>
             </control>
             <control type="fixedlist" id="2000">
@@ -100,14 +100,14 @@
                     </control>
                 </focusedlayout>
                 <content>
-                    <item id="5">
-                        <property name="setting_label">Accounts</property>
-                    </item>
                     <item id="10">
                         <property name="setting_label">General Settings</property>
                     </item>
+                    <item id="5">
+                        <property name="setting_label">Movie Accounts</property>
+                    </item>
                     <item id="20">
-                        <property name="setting_label">Live TV</property>
+                        <property name="setting_label">Live TV Accounts</property>
                     </item>
                     <item id="15">
                         <property name="setting_label">Tutorial</property>
@@ -405,7 +405,7 @@
                     </control>
                 </focusedlayout>
                 <content>
-<!-- ACCOUNTS 5-->
+<!-- MOVIE ACCOUNTS 5-->
         <!-- TorBox -->
                       <item>
                           <visible>Container(2000).HasFocus(5)</visible>

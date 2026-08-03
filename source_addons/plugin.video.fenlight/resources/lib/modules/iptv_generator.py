@@ -1,5 +1,15 @@
+# -*- coding: utf-8 -*-
+"""FLAM Live TV generator.
+
+Consolidated from the v2.1.85 runtime implementation. Historical override
+layers were removed and the active fallback implementations now have explicit
+names. Catalogue, delta/reference, EPG, Special Events, selection policy and
+staged-commit behaviour are intentionally unchanged.
+"""
+
 import copy
 import difflib
+import hashlib
 import gzip
 import os
 import shutil
@@ -11,6 +21,8 @@ import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from functools import lru_cache
+from collections import Counter
 
 try:
     import xbmcvfs
@@ -61,9 +73,10 @@ DOWNLOAD_EPG = True
 EPG_URL = "https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz"
 EPG_GZ_FILE = str(IPTV_CACHE_DIR / "epg_ripper_UK1.xml.gz")
 
-# If True, channels are only written to the M3U if they can be matched to the EPGShare XML.
-# This keeps Kodi clean and avoids channels with blank guide data.
-REQUIRE_EPG_MATCH = True
+# EPG mapping and channel availability are separate decisions. A genuine
+# playable channel may be listed and enabled even when no reliable XMLTV match
+# exists; in that case it is clearly marked "No EPG" rather than guessed.
+REQUIRE_EPG_MATCH = False
 
 # Confidence thresholds. Anything below these goes to the report instead of being guessed silently.
 MIN_STREAM_MATCH_SCORE = 260
@@ -486,20 +499,15 @@ def upper_name(item):
     return get_stream_name(item).upper()
 
 
-def normalise_epg(epg):
-    return clean(epg).lower()
 
 
-def get_output_epg(item):
-    # This is now the EPGShare XMLTV ID once matched.
-    return item.get("_xmltv_id") or item.get("_forced_epg_id") or get_provider_epg(item)
 
 
 # =========================
 # TEXT MATCHING HELPERS
 # =========================
 
-def normalise_text(value):
+def _normalise_text_uncached(value):
     text = clean(value).lower()
     text = unicodedata.normalize("NFKD", text)
 
@@ -546,12 +554,8 @@ def normalise_text(value):
     return text
 
 
-def compact_text(value):
-    return re.sub(r"[^a-z0-9]+", "", normalise_text(value))
 
 
-def text_tokens(value):
-    return set(normalise_text(value).split())
 
 
 def contains_term(text, compact, term):
@@ -674,16 +678,6 @@ def display_name(item):
     return name
 
 
-def sort_name(item):
-    canonical = item.get("_canonical", get_output_epg(item))
-    name = display_name(item).upper()
-
-    # Keep visible name as "4K Sky Sports Main Event",
-    # but sort it beside normal "Sky Sports Main Event".
-    if canonical == "sky_sports_main_event_4k":
-        return "SKY SPORTS MAIN EVENT Z 4K"
-
-    return name
 
 
 # =========================
@@ -774,37 +768,6 @@ def quality_score(item):
     return score
 
 
-def choose_from_exact_provider_epg(wanted, options):
-    """
-    This keeps your existing behaviour for providers that still use your old epg_channel_id values.
-    The only change is that the chosen item gets metadata added afterwards.
-    """
-    key = wanted["key"]
-
-    # For normal Sky Sports Main Event, avoid picking the VIP stream.
-    # We add the VIP/4K version separately as a second channel.
-    if key == "sky_sports_main_event":
-        non_vip_options = [
-            item for item in options
-            if not upper_name(item).startswith("VIP:")
-        ]
-
-        if non_vip_options:
-            best_item = max(non_vip_options, key=quality_score)
-        else:
-            best_item = max(options, key=quality_score)
-    else:
-        best_item = max(options, key=quality_score)
-
-    output = dict(best_item)
-    output["_group"] = wanted["group"]
-    output["_canonical"] = key
-    output["_wanted_name"] = wanted["name"]
-    output["_variants"] = len(options)
-    output["_score"] = quality_score(best_item)
-    output["_stream_match_method"] = "exact_provider_epg"
-    output["_stream_match_score"] = "exact"
-    return output
 
 
 # =========================
@@ -841,130 +804,12 @@ def stream_match_score(wanted, item):
     return score
 
 
-def find_stream_fuzzy(wanted, streams):
-    scored = []
-    for item in streams:
-        score = stream_match_score(wanted, item)
-        if score >= MIN_STREAM_MATCH_SCORE:
-            temp = dict(item)
-            temp["_group"] = wanted["group"]
-            # Use your original quality_score as the main tie-breaker among valid fuzzy candidates.
-            scored.append((score, quality_score(temp), item))
-
-    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
-
-    if not scored:
-        return None, []
-
-    best_match_score, best_quality_score, best_item = scored[0]
-    second_score = scored[1][0] if len(scored) > 1 else -9999
-
-    if best_match_score < HIGH_CONFIDENCE_SCORE and best_match_score - second_score < MIN_SCORE_GAP:
-        return None, scored[:5]
-
-    output = dict(best_item)
-    output["_group"] = wanted["group"]
-    output["_canonical"] = wanted["key"]
-    output["_wanted_name"] = wanted["name"]
-    output["_variants"] = len(scored)
-    output["_score"] = best_quality_score
-    output["_stream_match_method"] = "fuzzy_name_fallback"
-    output["_stream_match_score"] = best_match_score
-    return output, scored[:5]
 
 
-def vip_main_event_score(item):
-    name = upper_name(item)
-    score = quality_score(item)
-
-    if name.startswith("VIP:"):
-        score += 1000
-
-    if "SKY SPORTS MAIN" in name or "MAIN EVENT" in name:
-        score += 500
-
-    if "4K" in name or "UHD" in name or "3840" in name or "³⁸⁴⁰" in name:
-        score += 300
-
-    if "SD" in name:
-        score -= 500
-
-    return score
 
 
-def find_extra_vip_main_event(streams):
-    candidates = []
-
-    for item in streams:
-        epg = get_provider_epg(item)
-        name = upper_name(item)
-
-        # First preference: exact old provider EPG ID, as before.
-        exact_old_match = epg == "skysportsmainevent.uk"
-
-        # Fallback: name-based if provider EPG ID changed.
-        fuzzy_name_match = (
-            "MAIN EVENT" in name
-            and ("SKY" in name or "SKY SPORTS" in name)
-        )
-
-        if not exact_old_match and not fuzzy_name_match:
-            continue
-
-        if not name.startswith("VIP:"):
-            continue
-
-        if is_adult(item):
-            continue
-
-        candidates.append(item)
-
-    if not candidates:
-        return None
-
-    best_item = max(candidates, key=vip_main_event_score)
-
-    output = dict(best_item)
-    output["_group"] = "Sports"
-    output["_canonical"] = "sky_sports_main_event_4k"
-    output["_wanted_name"] = "4K Sky Sports Main Event"
-    output["_variants"] = len(candidates)
-    output["_score"] = vip_main_event_score(best_item)
-    output["_display_name"] = "4K Sky Sports Main Event"
-    output["_stream_match_method"] = "vip_main_event_extra"
-    output["_stream_match_score"] = "special"
-
-    return output
 
 
-def find_first_mutv(streams):
-    """
-    Take the first MUTV-looking item in the full JSON, even if it has no EPG ID.
-    This uses the true JSON order, not num, stream_id, or quality score.
-    """
-    for item in streams:
-        name = upper_name(item)
-
-        if "MUTV" not in name:
-            continue
-
-        if is_adult(item):
-            continue
-
-        output = dict(item)
-        output["_group"] = "Sports"
-        output["_canonical"] = "mutv"
-        output["_wanted_name"] = "MUTV"
-        output["_variants"] = 1
-        output["_score"] = 0
-        output["_display_name"] = "MUTV"
-        output["_forced_epg_id"] = "mutv.uk"
-        output["_stream_match_method"] = "first_mutv_special"
-        output["_stream_match_score"] = "special"
-
-        return output
-
-    return None
 
 
 # =========================
@@ -1037,76 +882,8 @@ def find_epg_match(wanted, epg_channels):
 
     return best_channel, best_score, scored[:5]
 
-def attach_epg_matches(channels, epg_channels, dropped):
-    matched = []
-
-    for item in channels:
-        canonical = item.get("_canonical")
-
-        # The extra 4K Main Event uses the same guide data as normal Main Event.
-        lookup_key = "sky_sports_main_event" if canonical == "sky_sports_main_event_4k" else canonical
-        wanted = CHANNEL_BY_KEY.get(lookup_key)
-
-        if not wanted:
-            dropped.append({
-                "name": display_name(item),
-                "reason": f"No wanted-channel metadata for {canonical}",
-                "stream_item": item,
-            })
-            continue
-
-        epg_channel, epg_score, epg_alternatives = find_epg_match(wanted, epg_channels)
-
-        if not epg_channel and REQUIRE_EPG_MATCH:
-            dropped.append({
-                "name": wanted["name"],
-                "reason": f"No confident EPGShare match. Best score={epg_score}",
-                "stream_item": item,
-                "epg_alternatives": epg_alternatives,
-            })
-            continue
-
-        output = dict(item)
-        if epg_channel:
-            output["_xmltv_id"] = epg_channel["id"]
-            output["_xmltv_display_names"] = epg_channel.get("names", [])
-            output["_epg_match_score"] = epg_score
-        else:
-            output["_xmltv_id"] = get_provider_epg(item)
-            output["_xmltv_display_names"] = []
-            output["_epg_match_score"] = "none"
-
-        matched.append(output)
-
-    return matched
 
 
-def write_filtered_epg(root, selected_xmltv_ids):
-    selected_xmltv_ids = set(selected_xmltv_ids)
-
-    new_root = ET.Element(root.tag, root.attrib)
-
-    channel_count = 0
-    programme_count = 0
-
-    for channel in root.findall("channel"):
-        if channel.get("id") in selected_xmltv_ids:
-            new_root.append(channel)
-            channel_count += 1
-
-    for programme in root.findall("programme"):
-        if programme.get("channel") in selected_xmltv_ids:
-            new_root.append(programme)
-            programme_count += 1
-
-    try:
-        ET.indent(new_root, space="  ")
-    except AttributeError:
-        pass
-
-    tree = ET.ElementTree(new_root)
-    tree.write(OUTPUT_EPG_FILE, encoding="utf-8", xml_declaration=True)
-    return channel_count, programme_count
 
 
 # =========================
@@ -1215,10 +992,6 @@ def maybe_download_live_streams():
         download_file(build_live_streams_url(), INPUT_JSON, description="live streams JSON")
 
 
-def maybe_download_epg():
-    if DOWNLOAD_EPG:
-        print("Downloading EPGShare XMLTV file...")
-        download_file(EPG_URL, EPG_GZ_FILE, description="EPGShare XMLTV file")
 
 
 # =========================
@@ -1237,164 +1010,18 @@ def build_exact_provider_buckets(streams):
     return buckets
 
 
-def choose_channels(streams):
-    exact_buckets = build_exact_provider_buckets(streams)
-    chosen = []
-    dropped = []
-
-    for wanted in WANTED_CHANNELS:
-        # MUTV stays as your special case because the provider sometimes gives it no EPG ID.
-        if wanted["key"] == "mutv":
-            continue
-
-        exact_options = []
-        for epg_id in wanted.get("provider_epg_ids", []):
-            exact_options.extend(exact_buckets.get(epg_id.lower(), []))
-
-        if exact_options:
-            chosen.append(choose_from_exact_provider_epg(wanted, exact_options))
-            continue
-
-        # Fallback only if the exact old EPG-ID route cannot find this channel.
-        fuzzy_item, alternatives = find_stream_fuzzy(wanted, streams)
-        if fuzzy_item:
-            chosen.append(fuzzy_item)
-        else:
-            dropped.append({
-                "name": wanted["name"],
-                "reason": "No exact provider EPG ID and no confident fuzzy stream match",
-                "stream_alternatives": alternatives,
-            })
-
-    # Add one extra VIP/4K Sky Sports Main Event as a separate channel.
-    extra_vip_main_event = find_extra_vip_main_event(streams)
-    if extra_vip_main_event:
-        chosen.append(extra_vip_main_event)
-
-    # Add MUTV from the first MUTV-looking entry in the full JSON.
-    first_mutv = find_first_mutv(streams)
-    if first_mutv:
-        chosen.append(first_mutv)
-    else:
-        dropped.append({"name": "MUTV", "reason": "No MUTV-looking stream found"})
-
-    group_order = {
-        "Sports": 1,
-        "BBC": 2,
-        "ITV": 3,
-        "Channel 4 & 5": 4,
-        "Entertainment": 5,
-        "News": 6,
-        "Documentary": 7,
-        "Music": 8,
-        "Kids": 9,
-    }
-
-    chosen.sort(
-        key=lambda item: (
-            group_order.get(item.get("_group"), 99),
-            sort_name(item),
-        )
-    )
-
-    return chosen, dropped
 
 
 # =========================
 # OUTPUT WRITERS
 # =========================
 
-def write_m3u(channels):
-    lines = [f'#EXTM3U x-tvg-url="{OUTPUT_EPG_FILE}"']
-
-    for item in channels:
-        name = display_name(item)
-        stream_id = get_stream_id(item)
-        logo = get_logo(item)
-        epg_id = get_output_epg(item)
-        group = clean(item.get("_group"))
-
-        stream_url = f"{SERVER}/live/{USERNAME}/{PASSWORD}/{stream_id}.{OUTPUT_FORMAT}"
-
-        lines.append(
-            f'#EXTINF:-1 '
-            f'tvg-id="{epg_id}" '
-            f'tvg-name="{name}" '
-            f'tvg-logo="{logo}" '
-            f'group-title="{group}",'
-            f'{name}'
-        )
-        lines.append(stream_url)
-
-    Path(OUTPUT_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def describe_stream_alternatives(alternatives):
-    lines = []
-    for row in alternatives[:5]:
-        if len(row) == 3:
-            match_score, quality, item = row
-            lines.append(
-                f"    candidate stream_score={match_score} quality={quality} | "
-                f"name={get_stream_name(item)} | epg={get_provider_epg(item)} | stream_id={get_stream_id(item)}"
-            )
-    return lines
 
 
-def describe_epg_alternatives(alternatives):
-    lines = []
-    for score, channel in alternatives[:5]:
-        lines.append(
-            f"    candidate epg_score={score} | id={channel.get('id')} | names={', '.join(channel.get('names', [])[:3])}"
-        )
-    return lines
 
 
-def write_report(channels, dropped, filtered_epg_stats=None):
-    lines = [
-        f"Total selected channels: {len(channels)}",
-        f"Filtered EPG channels/programmes: {filtered_epg_stats or 'not written'}",
-        "",
-    ]
-
-    current_group = None
-
-    for item in channels:
-        group = item.get("_group")
-
-        if group != current_group:
-            current_group = group
-            lines.append("")
-            lines.append(f"===== {group} =====")
-
-        xmltv_names = ", ".join(item.get("_xmltv_display_names", [])[:3])
-        lines.append(
-            f'{display_name(item)} | '
-            f'original={get_stream_name(item)} | '
-            f'stream_id={get_stream_id(item)} | '
-            f'provider_epg={get_provider_epg(item)} | '
-            f'xmltv_id={get_output_epg(item)} | '
-            f'xmltv_names={xmltv_names} | '
-            f'variants={item.get("_variants")} | '
-            f'quality_score={item.get("_score")} | '
-            f'stream_method={item.get("_stream_match_method")} | '
-            f'stream_match_score={item.get("_stream_match_score")} | '
-            f'epg_match_score={item.get("_epg_match_score")}'
-        )
-
-    lines.append("")
-    lines.append("===== DROPPED / NEEDS REVIEW =====")
-
-    if not dropped:
-        lines.append("No dropped channels.")
-    else:
-        for item in dropped:
-            lines.append("")
-            lines.append(f"{item.get('name')} | {item.get('reason')}")
-            lines.extend(describe_stream_alternatives(item.get("stream_alternatives", [])))
-            lines.extend(describe_epg_alternatives(item.get("epg_alternatives", [])))
-
-    Path(REPORT_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # =========================
@@ -1541,86 +1168,6 @@ def reload_pvr_manager():
             "message": "IPTV Simple hard reload failed: %s. Restart Kodi if Live TV does not appear." % str(exc)
         }
 
-def run_generator():
-    maybe_download_live_streams()
-
-    input_path = Path(INPUT_JSON)
-    if not input_path.exists():
-        raise GeneratorError(
-            f"Cannot find {INPUT_JSON}. Download failed, or put live_streams.json in the same folder as this script."
-        )
-
-    print("Loading and validating live streams JSON...")
-    streams = load_and_validate_live_streams(input_path)
-
-    # Only download/load the EPG after the provider login has been validated.
-    maybe_download_epg()
-
-    epg_path = Path(EPG_GZ_FILE)
-    if not epg_path.exists():
-        raise GeneratorError(
-            f"Cannot find {EPG_GZ_FILE}. Download failed, or put the EPGShare .xml.gz file in the same folder as this script."
-        )
-
-    print("Loading EPGShare XMLTV...")
-    try:
-        epg_root = load_epg_root(epg_path)
-    except Exception as error:
-        raise GeneratorError(
-            f"Could not read the EPGShare XMLTV file. Try deleting {EPG_GZ_FILE} and running again.\n{error}"
-        ) from error
-
-    epg_channels = get_epg_channels(epg_root)
-    if not epg_channels:
-        raise GeneratorError("The EPGShare file loaded, but no XMLTV channels were found.")
-    print(f"EPGShare channels found: {len(epg_channels)}")
-
-    print("Filtering and choosing streams...")
-    channels, dropped = choose_channels(streams)
-
-    print("Matching selected channels to EPGShare IDs...")
-    channels = attach_epg_matches(channels, epg_channels, dropped)
-
-    if not channels:
-        write_report(channels, dropped, filtered_epg_stats="not written")
-        raise GeneratorError(
-            "No channels could be generated. Check IPTV-Report.txt for the dropped/review list."
-        )
-
-    print("Writing filtered EPG...")
-    selected_xmltv_ids = [get_output_epg(item) for item in channels if get_output_epg(item)]
-    epg_channel_count, epg_programme_count = write_filtered_epg(epg_root, selected_xmltv_ids)
-    filtered_epg_stats = f"{epg_channel_count} channels / {epg_programme_count} programmes"
-
-    print("Writing M3U...")
-    write_m3u(channels)
-
-    print("Writing report...")
-    write_report(channels, dropped, filtered_epg_stats)
-    iptv_simple_settings = update_iptv_simple_paths()
-    pvr_reload = reload_pvr_manager()
-
-
-    print("")
-    print(f"Done. Created: {OUTPUT_FILE}")
-    print(f"Filtered EPG: {OUTPUT_EPG_FILE}")
-    print(f"Report: {REPORT_FILE}")
-    print(f"Selected channels: {len(channels)}")
-    print(f"Filtered EPG: {filtered_epg_stats}")
-    if dropped:
-        print(f"Review needed for dropped/uncertain items: {len(dropped)}")
-
-    return {
-        "success": True,
-        "playlist": str(Path(OUTPUT_FILE)),
-        "epg": str(Path(OUTPUT_EPG_FILE)),
-        "report": str(Path(REPORT_FILE)),
-        "channels": len(channels),
-        "dropped": len(dropped),
-        "filtered_epg": filtered_epg_stats,
-        "iptv_simple_settings": iptv_simple_settings,
-        "pvr_reload": pvr_reload,
-    }
 
 def generate(server, username, password):
     global SERVER, USERNAME, PASSWORD
@@ -1686,42 +1233,37 @@ def generate(server, username, password):
     }
 
 def main():
+    """Run the generator directly and return cleanly on success."""
     try:
-        run_generator()
-
+        result = run_generator()
     except GeneratorError as error:
         message = redact_url(str(error).strip())
-
     except Exception as error:
         message = redact_url(
             f"Unexpected IPTV generator error: "
             f"{type(error).__name__}: {error}"
         )
-
         try:
             import traceback
             print(traceback.format_exc())
         except Exception:
             pass
+    else:
+        return result
 
     print("")
     print("Could not generate IPTV files.")
     print(message)
-
     try:
         write_failure_report(message)
         print(f"Failure report written to: {REPORT_FILE}")
     except Exception:
         pass
-
-    sys.exit(1)
+    return 1
 
 
 # ============================================================================
-# FLAM LIVE TV CATALOGUE MODE
-# This section deliberately overrides run_generator() from the original one-link
-# generator.  The old helper functions above are still used for matching,
-# downloading, EPG filtering, IPTV Simple setup, and PVR reload.
+# CATALOGUE STORAGE, SELECTION REBUILDS AND PLAYBACK
 # ============================================================================
 
 CATALOG_FILE = str(IPTV_OUTPUT_DIR / "IPTV-Catalog.json")
@@ -1757,19 +1299,9 @@ def _catalog_path():
     return Path(CATALOG_FILE)
 
 
-def _load_existing_enabled_states():
-    path = _catalog_path()
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-        channels = data.get("channels", []) if isinstance(data, dict) else data
-        return {str(item.get("key")): bool(item.get("enabled")) for item in channels if item.get("key")}
-    except Exception:
-        return {}
 
 
-def load_catalog():
+def _load_catalog_raw():
     path = _catalog_path()
     if not path.exists():
         raise GeneratorError("No IPTV channel catalogue found. Run Generate / Refresh Live TV first.")
@@ -1787,48 +1319,12 @@ def save_catalog(catalog):
     _catalog_path().write_text(json.dumps(catalog, indent=2, sort_keys=False), encoding="utf-8")
 
 
-def update_catalog_enabled_states(enabled_keys):
-    catalog = load_catalog()
-    enabled_keys = set(str(item) for item in enabled_keys)
-    for item in catalog.get("channels", []):
-        item["enabled"] = item.get("key") in enabled_keys
-    # Rebuild and validate the catalogue, M3U and EPG together before saving
-    # the changed selection. This preserves the last working set on failure.
-    return rebuild_from_catalog(reload_pvr=True, catalog_override=catalog)
 
 
-def _channel_default_enabled(group_name, xmltv_id):
-    # Normal UK EPG-matched channels are enabled by default.
-    # Kids and Non-UK Extras stay available but disabled by default.
-    if group_name in {"Kids", "Non-UK Extras"}:
-        return False
-    return bool(xmltv_id)
 
 
-def _clean_category(item):
-    return clean(get_field(item, "category_name", "category", "group"))
 
 
-def _variant_quality_label(item):
-    name = upper_name(item)
-    bits = []
-    if "4K" in name or "UHD" in name or "3840" in name or "³⁸⁴⁰" in name:
-        bits.append("4K/UHD")
-    elif "HD" in name or "ᴴᴰ" in name or "RAW" in name or "ᴿᴬᵂ" in name:
-        bits.append("HD/RAW")
-    elif "SD" in name:
-        bits.append("SD")
-
-    if name.startswith("VIP:"):
-        bits.append("VIP")
-    elif name.startswith("NOW:"):
-        bits.append("NOW")
-    elif name.startswith("UK:"):
-        bits.append("UK")
-    elif name.startswith("NZ:"):
-        bits.append("NZ")
-
-    return " / ".join(bits) if bits else "Standard"
 
 
 def _safe_kodi_display_text(value):
@@ -1869,9 +1365,6 @@ def _safe_kodi_display_text(value):
     return text
 
 
-def _safe_stream_label(stream):
-    name = _safe_kodi_display_text(stream.get("name") or "Unknown")
-    return name or "Unknown"
 
 
 def _variant_priority(item, wanted=None, match_score=0):
@@ -1900,20 +1393,6 @@ def _variant_priority(item, wanted=None, match_score=0):
     return score
 
 
-def _stream_to_variant(item, wanted=None, method="exact_provider_epg", match_score="exact"):
-    return {
-        "name": get_stream_name(item),
-        "stream_id": str(get_stream_id(item)),
-        "provider_epg": get_provider_epg(item),
-        "logo": get_logo(item),
-        "category": _clean_category(item),
-        "quality": _variant_quality_label(item),
-        "quality_score": quality_score(dict(item, _group=(wanted or {}).get("group", ""))),
-        "priority_score": _variant_priority(item, wanted, 0 if match_score == "exact" else match_score),
-        "match_method": method,
-        "match_score": match_score,
-        "output_format": OUTPUT_FORMAT,
-    }
 
 
 def _unique_sorted_variants(variants):
@@ -1930,40 +1409,8 @@ def _unique_sorted_variants(variants):
     return result[:MAX_VARIANTS_PER_CHANNEL]
 
 
-def _make_channel_record(key, name, section, variants, xmltv_id="", xmltv_names=None, epg_score="", enabled=None, status="matched", previous_states=None):
-    previous_states = previous_states or {}
-    if enabled is None:
-        if key in previous_states:
-            enabled = bool(previous_states[key])
-        else:
-            enabled = _channel_default_enabled(section, xmltv_id)
-
-    first_logo = ""
-    for variant in variants:
-        if variant.get("logo"):
-            first_logo = variant.get("logo")
-            break
-
-    return {
-        "key": key,
-        "name": name,
-        "section": section,
-        "enabled": bool(enabled),
-        "xmltv_id": xmltv_id or "",
-        "xmltv_names": xmltv_names or [],
-        "epg_match_score": epg_score,
-        "epg_status": status,
-        "logo": first_logo,
-        "stream_count": len(variants),
-        "streams": variants,
-    }
 
 
-def _epg_for_wanted(wanted, epg_channels):
-    epg_channel, epg_score, epg_alternatives = find_epg_match(wanted, epg_channels)
-    if epg_channel:
-        return epg_channel.get("id", ""), epg_channel.get("names", []), epg_score, "matched", epg_alternatives
-    return "", [], epg_score, "no_match", epg_alternatives
 
 
 def _build_mutv_group(wanted, streams, epg_channels, previous_states):
@@ -2089,77 +1536,8 @@ def _extra_match_score(extra, item):
     return score
 
 
-def _build_extra_group(extra, streams, previous_states):
-    scored = []
-    # Cheap pre-filter first. G2G can have 55k+ streams, and running the full
-    # fuzzy scorer for every curated extra would be slow.
-    alias_compacts = [compact_text(alias) for alias in ([extra.get("name", "")] + extra.get("aliases", [])) if compact_text(alias)]
-    for item in streams:
-        if is_adult(item) or not get_stream_id(item):
-            continue
-        search_compact = compact_text(stream_search_text(item))
-        if not any(alias and alias in search_compact for alias in alias_compacts):
-            continue
-        score = _extra_match_score(extra, item)
-        if score >= MIN_STREAM_MATCH_SCORE:
-            scored.append((score, item))
-    scored.sort(key=lambda row: row[0], reverse=True)
-    variants = []
-    for score, item in scored[:MAX_VARIANTS_PER_CHANNEL]:
-        variant = _stream_to_variant(item, extra, method="extra_allowlist", match_score=score)
-        variant["priority_score"] += int(score) // 5
-        variants.append(variant)
-    variants = _unique_sorted_variants(variants)
-    if not variants:
-        return None
-    return _make_channel_record(
-        extra["key"], extra["name"], "Non-UK Extras", variants,
-        xmltv_id="", xmltv_names=[], epg_score="none", status="no_uk_epg",
-        enabled=previous_states.get(extra["key"], False) if extra["key"] in previous_states else False,
-        previous_states=previous_states
-    )
 
 
-def build_channel_catalog(streams, epg_channels):
-    previous_states = _load_existing_enabled_states()
-    exact_buckets = build_exact_provider_buckets(streams)
-    channels = []
-    dropped = []
-
-    for wanted in WANTED_CHANNELS:
-        channel, drop = _build_wanted_group(wanted, streams, exact_buckets, epg_channels, previous_states)
-        if channel:
-            channels.append(channel)
-        elif drop:
-            dropped.append(drop)
-
-    for extra in EXTRA_CHANNELS:
-        channel = _build_extra_group(extra, streams, previous_states)
-        if channel:
-            channels.append(channel)
-
-    group_order = {
-        "Sports": 1,
-        "BBC": 2,
-        "ITV": 3,
-        "Channel 4 & 5": 4,
-        "Entertainment": 5,
-        "News": 6,
-        "Documentary": 7,
-        "Music": 8,
-        "Kids": 9,
-        "Non-UK Extras": 99,
-    }
-    channels.sort(key=lambda item: (group_order.get(item.get("section"), 50), item.get("name", "").lower()))
-
-    return {
-        "version": 2,
-        "mode": "grouped_plugin_resolver",
-        "server": normalised_server() if clean(SERVER) else "",
-        "output_format": OUTPUT_FORMAT,
-        "channels": channels,
-        "dropped": dropped,
-    }
 
 
 def _enabled_channels(catalog):
@@ -2190,176 +1568,12 @@ def write_m3u_from_catalog(catalog):
     Path(OUTPUT_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def write_report_from_catalog(catalog, filtered_epg_stats=None):
-    channels = catalog.get("channels", [])
-    enabled = _enabled_channels(catalog)
-    disabled = [item for item in channels if not item.get("enabled")]
-    lines = [
-        "FLAM grouped Live TV catalogue report",
-        "",
-        "Total catalogue channels: %s" % len(channels),
-        "Enabled guide channels: %s" % len(enabled),
-        "Disabled catalogue channels: %s" % len(disabled),
-        "Total stream variants: %s" % sum(len(item.get("streams", [])) for item in channels),
-        "Filtered EPG channels/programmes: %s" % (filtered_epg_stats or "not written"),
-        "",
-    ]
-
-    current_section = None
-    for channel in channels:
-        section = channel.get("section") or "Other"
-        if section != current_section:
-            current_section = section
-            lines.append("")
-            lines.append("===== %s =====" % section)
-        status = "enabled" if channel.get("enabled") else "disabled"
-        xmltv_names = ", ".join(channel.get("xmltv_names", [])[:3])
-        lines.append(
-            "%s | %s | streams=%s | xmltv_id=%s | xmltv_names=%s | epg_status=%s | epg_score=%s" % (
-                channel.get("name"), status, len(channel.get("streams", [])),
-                channel.get("xmltv_id"), xmltv_names, channel.get("epg_status"), channel.get("epg_match_score")
-            )
-        )
-        for index, stream in enumerate(channel.get("streams", [])[:10], start=1):
-            lines.append(
-                "    %02d. %s | stream_id=%s | provider_epg=%s | quality=%s | priority=%s | method=%s" % (
-                    index, stream.get("name"), stream.get("stream_id"), stream.get("provider_epg"),
-                    stream.get("quality"), stream.get("priority_score"), stream.get("match_method")
-                )
-            )
-        if len(channel.get("streams", [])) > 10:
-            lines.append("    ... %s more variants" % (len(channel.get("streams", [])) - 10))
-
-    lines.append("")
-    lines.append("===== DROPPED / NEEDS REVIEW =====")
-    dropped = catalog.get("dropped", [])
-    if not dropped:
-        lines.append("No dropped channels.")
-    else:
-        for item in dropped:
-            lines.append("%s | %s" % (item.get("name"), item.get("reason")))
-
-    Path(REPORT_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_filtered_epg_for_catalog(catalog, epg_root):
-    selected_xmltv_ids = [item.get("xmltv_id") for item in _enabled_channels(catalog) if item.get("xmltv_id")]
-    if not selected_xmltv_ids:
-        # Keep IPTV Simple happy with a valid empty XMLTV file.
-        root = ET.Element("tv")
-        ET.ElementTree(root).write(OUTPUT_EPG_FILE, encoding="utf-8", xml_declaration=True)
-        return "0 channels / 0 programmes"
-    channel_count, programme_count = write_filtered_epg(epg_root, selected_xmltv_ids)
-    return "%s channels / %s programmes" % (channel_count, programme_count)
 
 
-def rebuild_from_catalog(reload_pvr=True):
-    catalog = load_catalog()
-    epg_path = Path(EPG_GZ_FILE)
-    if not epg_path.exists():
-        raise GeneratorError("Cannot rebuild EPG because the cached EPGShare file is missing. Run Generate / Refresh Live TV again.")
-    try:
-        epg_root = load_epg_root(epg_path)
-    except Exception as error:
-        raise GeneratorError("Could not read cached EPGShare file. Run Generate / Refresh Live TV again.\n%s" % str(error))
-
-    filtered_epg_stats = _write_filtered_epg_for_catalog(catalog, epg_root)
-    write_m3u_from_catalog(catalog)
-    write_report_from_catalog(catalog, filtered_epg_stats)
-    iptv_simple_settings = update_iptv_simple_paths()
-    pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
-
-    enabled = _enabled_channels(catalog)
-    return {
-        "success": True,
-        "playlist": str(Path(OUTPUT_FILE)),
-        "epg": str(Path(OUTPUT_EPG_FILE)),
-        "report": str(Path(REPORT_FILE)),
-        "catalog": str(Path(CATALOG_FILE)),
-        "channels": len(enabled),
-        "catalog_channels": len(catalog.get("channels", [])),
-        "disabled": len(catalog.get("channels", [])) - len(enabled),
-        "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
-        "dropped": len(catalog.get("dropped", [])),
-        "filtered_epg": filtered_epg_stats,
-        "iptv_simple_settings": iptv_simple_settings,
-        "pvr_reload": pvr_reload,
-    }
 
 
-def run_generator():
-    maybe_download_live_streams()
-
-    input_path = Path(INPUT_JSON)
-    if not input_path.exists():
-        raise GeneratorError(
-            f"Cannot find {INPUT_JSON}. Download failed, or put live_streams.json in the same folder as this script."
-        )
-
-    print("Loading and validating live streams JSON...")
-    streams = load_and_validate_live_streams(input_path)
-
-    maybe_download_epg()
-
-    epg_path = Path(EPG_GZ_FILE)
-    if not epg_path.exists():
-        raise GeneratorError(
-            f"Cannot find {EPG_GZ_FILE}. Download failed, or put the EPGShare .xml.gz file in the same folder as this script."
-        )
-
-    print("Loading EPGShare XMLTV...")
-    try:
-        epg_root = load_epg_root(epg_path)
-    except Exception as error:
-        raise GeneratorError(
-            f"Could not read the EPGShare XMLTV file. Try deleting {EPG_GZ_FILE} and running again.\n{error}"
-        ) from error
-
-    epg_channels = get_epg_channels(epg_root)
-    if not epg_channels:
-        raise GeneratorError("The EPGShare file loaded, but no XMLTV channels were found.")
-    print(f"EPGShare channels found: {len(epg_channels)}")
-
-    print("Building grouped Live TV catalogue...")
-    catalog = build_channel_catalog(streams, epg_channels)
-    save_catalog(catalog)
-
-    print("Writing filtered EPG and plugin M3U...")
-    filtered_epg_stats = _write_filtered_epg_for_catalog(catalog, epg_root)
-    write_m3u_from_catalog(catalog)
-
-    print("Writing report...")
-    write_report_from_catalog(catalog, filtered_epg_stats)
-
-    iptv_simple_settings = update_iptv_simple_paths()
-    pvr_reload = reload_pvr_manager()
-
-    enabled = _enabled_channels(catalog)
-    print("")
-    print(f"Done. Created: {OUTPUT_FILE}")
-    print(f"Filtered EPG: {OUTPUT_EPG_FILE}")
-    print(f"Catalogue: {CATALOG_FILE}")
-    print(f"Report: {REPORT_FILE}")
-    print(f"Enabled channels: {len(enabled)}")
-    print(f"Catalogue channels: {len(catalog.get('channels', []))}")
-    print(f"Stream variants: {sum(len(item.get('streams', [])) for item in catalog.get('channels', []))}")
-    print(f"Filtered EPG: {filtered_epg_stats}")
-
-    return {
-        "success": True,
-        "playlist": str(Path(OUTPUT_FILE)),
-        "epg": str(Path(OUTPUT_EPG_FILE)),
-        "report": str(Path(REPORT_FILE)),
-        "catalog": str(Path(CATALOG_FILE)),
-        "channels": len(enabled),
-        "catalog_channels": len(catalog.get("channels", [])),
-        "disabled": len(catalog.get("channels", [])) - len(enabled),
-        "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
-        "dropped": len(catalog.get("dropped", [])),
-        "filtered_epg": filtered_epg_stats,
-        "iptv_simple_settings": iptv_simple_settings,
-        "pvr_reload": pvr_reload,
-    }
 
 
 def _settings_login_details():
@@ -2387,67 +1601,10 @@ def _stream_url_for_variant(variant):
     return "%s/live/%s/%s/%s.%s" % (server.rstrip("/"), username, password, variant.get("stream_id"), fmt)
 
 
-def play_channel(channel_key):
-    """Resolve a plugin:// M3U item into a selected live stream URL."""
-    import sys
-    try:
-        import xbmcgui
-        import xbmcplugin
-    except Exception as error:
-        raise GeneratorError("Kodi playback modules unavailable: %s" % str(error))
-
-    catalog = load_catalog()
-    channel = None
-    for item in catalog.get("channels", []):
-        if item.get("key") == channel_key:
-            channel = item
-            break
-    if not channel:
-        raise GeneratorError("Live TV channel was not found in the catalogue. Run Generate / Refresh Live TV again.")
-
-    streams = channel.get("streams", [])
-    if not streams:
-        raise GeneratorError("No stream variants found for %s." % channel.get("name", channel_key))
-
-    if len(streams) == 1:
-        chosen = streams[0]
-    else:
-        labels = []
-        for index, stream in enumerate(streams, start=1):
-            label = "%02d. %s" % (index, _safe_stream_label(stream))
-            details = []
-            if stream.get("quality"):
-                details.append(stream.get("quality"))
-            if stream.get("stream_id"):
-                details.append("ID %s" % stream.get("stream_id"))
-            if stream.get("provider_epg"):
-                details.append(stream.get("provider_epg"))
-            if details:
-                label += "  [COLOR grey](%s)[/COLOR]" % " | ".join(details)
-            labels.append(label)
-
-        index = xbmcgui.Dialog().select(_safe_kodi_display_text(channel.get("name", "Live TV")), labels)
-        if index < 0:
-            try:
-                xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem())
-            except Exception:
-                pass
-            return None
-        chosen = streams[index]
-
-    url = _stream_url_for_variant(chosen)
-    listitem = xbmcgui.ListItem(path=url)
-    listitem.setProperty("IsPlayable", "true")
-    try:
-        listitem.setMimeType("video/MP2T")
-    except Exception:
-        pass
-    xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
-    return url
 
 
 # ============================================================================
-# FLAM LIVE TV CATALOGUE MODE v3
+# PROVIDER CHANNEL DISCOVERY
 # Full-provider discovery layer.
 #
 # The old WANTED_CHANNELS list is now a known/core mapping layer only.  It is
@@ -2484,19 +1641,6 @@ AUTO_UK_REJECT_TERMS = [
 ]
 
 
-def _enabled_default_for_channel(key, section, xmltv_id, is_core=False):
-    wanted = CHANNEL_BY_KEY.get(key) or {}
-
-    if wanted.get("enabled_default") is False:
-        return False
-
-    if section in {"Kids", "Non-UK Extras", "US Extras"}:
-        return False
-
-    if is_core:
-        return bool(xmltv_id)
-
-    return False
 
 
 def _is_usable_live_stream(item):
@@ -2621,88 +1765,8 @@ def _auto_key_from_provider_epg(provider_epg, fallback_name=''):
     return 'uk_%s' % base[:80]
 
 
-def _pseudo_wanted_for_auto_uk(provider_epg, display_name, variants):
-    epg_base = provider_epg.replace('.uk', '')
-    aliases = [display_name, epg_base, provider_epg]
-    for variant in variants[:6]:
-        if variant.get('name'):
-            aliases.append(_strip_quality_words(variant.get('name')))
-        if variant.get('provider_epg'):
-            aliases.append(variant.get('provider_epg'))
-    return {
-        'key': _auto_key_from_provider_epg(provider_epg, display_name),
-        'name': display_name,
-        'group': 'Other UK Channels',
-        'aliases': aliases,
-        'epg_aliases': aliases,
-        'reject': ['plus 1', '+1'] if 'plus 1' not in normalise_text(display_name) else [],
-        'provider_epg_ids': [provider_epg],
-    }
 
 
-def _build_auto_uk_groups(streams, epg_channels, previous_states, used_provider_epgs):
-    buckets = {}
-    for item in streams:
-        if not _is_auto_uk_candidate(item):
-            continue
-        epg = get_provider_epg(item)
-        if epg in used_provider_epgs:
-            continue
-        buckets.setdefault(epg, []).append(item)
-
-    channels = []
-    dropped = []
-
-    for provider_epg, items in sorted(buckets.items()):
-        variants = []
-        pseudo = {'group': 'Other UK Channels'}
-        for item in items:
-            variant = _stream_to_variant(item, pseudo, method='auto_provider_epg_uk', match_score='auto')
-            # Give same-EPG variants a slight boost. They are exact provider groups,
-            # just not hand-defined in the old WANTED list.
-            variant['priority_score'] += 80
-            variants.append(variant)
-        variants = _unique_sorted_variants(variants)
-        if not variants:
-            continue
-
-        best = _best_variant_for_name(variants)
-        # Need the original item matching the best variant for better section hints.
-        best_item = None
-        for item in items:
-            if str(get_stream_id(item)) == str(best.get('stream_id')):
-                best_item = item
-                break
-
-        display_name = _auto_display_name_from_item(best_item or items[0])
-        wanted = _pseudo_wanted_for_auto_uk(provider_epg, display_name, variants)
-        xmltv_id, xmltv_names, epg_score, epg_status, epg_alternatives = _epg_for_wanted(wanted, epg_channels)
-
-        if not xmltv_id:
-            dropped.append({
-                'name': display_name,
-                'reason': 'Auto UK provider_epg found but no confident EPGShare match: %s' % provider_epg,
-                'epg_alternatives': epg_alternatives,
-            })
-            continue
-
-        section = _infer_auto_uk_section(display_name, best_item)
-        key = wanted['key']
-        default_enabled = _enabled_default_for_channel(key, section, xmltv_id, is_core=False)
-        enabled = previous_states.get(key, default_enabled) if key in previous_states else default_enabled
-
-        # If EPGShare has a nicer name, use it only when provider name is too ugly.
-        if xmltv_names and (not display_name or len(display_name) <= 3):
-            display_name = _title_keep_acronyms(_strip_quality_words(xmltv_names[0]))
-
-        channels.append(_make_channel_record(
-            key, display_name, section, variants,
-            xmltv_id=xmltv_id, xmltv_names=xmltv_names, epg_score=epg_score,
-            enabled=enabled, status='auto_uk_epg_matched', previous_states=previous_states
-        ))
-        used_provider_epgs.add(provider_epg)
-
-    return channels, dropped
 
 
 def _mark_core_channel(channel):
@@ -2712,105 +1776,14 @@ def _mark_core_channel(channel):
     return channel
 
 
-def _mark_auto_channel(channel):
-    if channel:
-        channel['catalog_source'] = 'auto_uk_epg'
-        channel['default_enabled_reason'] = 'auto uk available, disabled by default'
-    return channel
 
 
-def _mark_extra_channel(channel):
-    if channel:
-        channel['catalog_source'] = 'curated_extra'
-        channel['default_enabled_reason'] = 'non-uk extra disabled by default'
-    return channel
 
 
 def _clean_streams_for_catalog(streams):
     return [item for item in streams if _is_usable_live_stream(item)]
 
 
-def build_channel_catalog(streams, epg_channels):
-    previous_states = _load_existing_enabled_states()
-    usable_streams = _clean_streams_for_catalog(streams)
-    exact_buckets = build_exact_provider_buckets(usable_streams)
-    channels = []
-    dropped = []
-    used_provider_epgs = set()
-
-    # 1) Known/core mappings. These are your old default ticked list, except Kids.
-    for wanted in WANTED_CHANNELS:
-        channel, drop = _build_wanted_group(wanted, usable_streams, exact_buckets, epg_channels, previous_states)
-        if channel:
-            # Core mapped UK channels remain default enabled except Kids.
-            if channel.get('key') not in previous_states:
-                channel['enabled'] = _enabled_default_for_channel(
-                    channel.get('key'), channel.get('section'), channel.get('xmltv_id'), is_core=True
-                )
-            channels.append(_mark_core_channel(channel))
-            for epg_id in wanted.get('provider_epg_ids', []):
-                used_provider_epgs.add(epg_id.lower())
-        elif drop:
-            dropped.append(drop)
-
-    # 2) Auto-discover every other provider_epg *.uk channel that maps to EPGShare.
-    auto_channels, auto_dropped = _build_auto_uk_groups(usable_streams, epg_channels, previous_states, used_provider_epgs)
-    for item in auto_channels:
-        channels.append(_mark_auto_channel(item))
-    dropped.extend(auto_dropped)
-
-    # 3) Curated non-UK extras. Always disabled unless previously enabled.
-    for extra in EXTRA_CHANNELS:
-        channel = _build_extra_group(extra, usable_streams, previous_states)
-        if channel:
-            channels.append(_mark_extra_channel(channel))
-
-    group_order = {
-        'Sports': 1,
-        'BBC': 2,
-        'ITV': 3,
-        'Channel 4 & 5': 4,
-        'Entertainment': 5,
-        'Movies': 6,
-        'News': 7,
-        'Documentary': 8,
-        'Music': 9,
-        'Kids': 10,
-        'Other UK Channels': 50,
-        'Non-UK Extras': 99,
-    }
-    channels.sort(key=lambda item: (group_order.get(item.get('section'), 60), item.get('name', '').lower()))
-
-    # Deduplicate by key in case a provider gives duplicate weird aliases. Prefer
-    # core mapping, then auto UK, then extras.
-    source_rank = {'core_mapping': 1, 'auto_uk_epg': 2, 'curated_extra': 3}
-    deduped = {}
-    for channel in channels:
-        key = channel.get('key')
-        if not key:
-            continue
-        old = deduped.get(key)
-        if old is None or source_rank.get(channel.get('catalog_source'), 50) < source_rank.get(old.get('catalog_source'), 50):
-            deduped[key] = channel
-    channels = list(deduped.values())
-    channels.sort(key=lambda item: (group_order.get(item.get('section'), 60), item.get('name', '').lower()))
-
-    return {
-        'version': 3,
-        'mode': 'grouped_plugin_resolver_auto_uk',
-        'server': normalised_server() if clean(SERVER) else '',
-        'output_format': OUTPUT_FORMAT,
-        'channels': channels,
-        'dropped': dropped,
-        'stats': {
-            'raw_streams': len(streams),
-            'usable_live_streams': len(usable_streams),
-            'core_channels': len([c for c in channels if c.get('catalog_source') == 'core_mapping']),
-            'auto_uk_channels': len([c for c in channels if c.get('catalog_source') == 'auto_uk_epg']),
-            'curated_extra_channels': len([c for c in channels if c.get('catalog_source') == 'curated_extra']),
-            'vod_or_non_live_dropped': max(0, len(streams) - len(usable_streams)),
-        },
-    }
 
 
 # Fast EPG matching for auto-discovered UK channels. This intentionally uses a
@@ -2831,134 +1804,12 @@ def _prepare_epg_fast_index(epg_channels):
     return index
 
 
-def _fast_auto_epg_score(alias_texts, epg_entry):
-    score = 0
-    best_ratio = 0.0
-    tokens = epg_entry['tokens']
-    compact = epg_entry['compact']
-    text = epg_entry['text']
-
-    for alias in alias_texts:
-        alias_norm = normalise_text(alias)
-        alias_compact = compact_text(alias)
-        if not alias_norm or not alias_compact:
-            continue
-        words = [word for word in alias_norm.split() if word not in {'tv', 'channel', 'hd', 'uk'}]
-
-        if alias_compact == compact:
-            score += 2200
-        elif alias_compact in compact or compact in alias_compact:
-            score += 1200
-        elif alias_norm in text:
-            score += 1000
-        elif words:
-            found = sum(1 for word in words if word in tokens or compact_text(word) in compact)
-            if found == len(words):
-                score += 650 + len(words) * 40
-            else:
-                score += int((found / float(len(words))) * 250)
-
-        # Only run SequenceMatcher when there is already some overlap.
-        if words and any(word in tokens for word in words):
-            ratio = difflib.SequenceMatcher(None, alias_compact, compact).ratio()
-            if ratio > best_ratio:
-                best_ratio = ratio
-
-    score += int(best_ratio * 250)
-    return score
 
 
-def _fast_epg_for_auto(provider_epg, display_name, variants, epg_fast_index):
-    epg_base = provider_epg.replace('.uk', '')
-    alias_texts = [display_name, epg_base, provider_epg]
-    for variant in variants[:4]:
-        if variant.get('name'):
-            alias_texts.append(_strip_quality_words(variant.get('name')))
-
-    scored = []
-    for entry in epg_fast_index:
-        score = _fast_auto_epg_score(alias_texts, entry)
-        if score > 0:
-            scored.append((score, entry['channel']))
-
-    scored.sort(key=lambda row: row[0], reverse=True)
-    if not scored:
-        return '', [], 0, 'no_match', []
-
-    best_score, best_channel = scored[0]
-    second_score = scored[1][0] if len(scored) > 1 else -9999
-    alternatives = scored[:5]
-
-    # Auto discovery needs to be stricter than known mappings because we do not
-    # want random provider junk appearing in the picker as a UK channel.
-    if best_score < 950:
-        return '', [], best_score, 'no_match', alternatives
-    if best_score < 1800 and best_score - second_score < 160:
-        return '', [], best_score, 'ambiguous', alternatives
-
-    return best_channel.get('id', ''), best_channel.get('names', []), best_score, 'auto_uk_epg_matched', alternatives
 
 
-# Override the earlier _build_auto_uk_groups with the faster EPG matcher.
-def _build_auto_uk_groups(streams, epg_channels, previous_states, used_provider_epgs):
-    epg_fast_index = _prepare_epg_fast_index(epg_channels)
-    buckets = {}
-    for item in streams:
-        if not _is_auto_uk_candidate(item):
-            continue
-        epg = get_provider_epg(item)
-        if epg in used_provider_epgs:
-            continue
-        buckets.setdefault(epg, []).append(item)
-
-    channels = []
-    dropped = []
-
-    for provider_epg, items in sorted(buckets.items()):
-        variants = []
-        pseudo = {'group': 'Other UK Channels'}
-        for item in items:
-            variant = _stream_to_variant(item, pseudo, method='auto_provider_epg_uk', match_score='auto')
-            variant['priority_score'] += 80
-            variants.append(variant)
-        variants = _unique_sorted_variants(variants)
-        if not variants:
-            continue
-
-        best = _best_variant_for_name(variants)
-        best_item = None
-        for item in items:
-            if str(get_stream_id(item)) == str(best.get('stream_id')):
-                best_item = item
-                break
-
-        display_name = _auto_display_name_from_item(best_item or items[0])
-        xmltv_id, xmltv_names, epg_score, epg_status, epg_alternatives = _fast_epg_for_auto(provider_epg, display_name, variants, epg_fast_index)
-
-        if not xmltv_id:
-            dropped.append({
-                'name': display_name,
-                'reason': 'Auto UK provider_epg found but no confident EPGShare match: %s' % provider_epg,
-                'epg_alternatives': epg_alternatives,
-            })
-            continue
-
-        section = _infer_auto_uk_section(display_name, best_item)
-        key = _auto_key_from_provider_epg(provider_epg, display_name)
-        default_enabled = _enabled_default_for_channel(key, section, xmltv_id, is_core=False)
-        enabled = previous_states.get(key, default_enabled) if key in previous_states else default_enabled
-
-        channels.append(_make_channel_record(
-            key, display_name, section, variants,
-            xmltv_id=xmltv_id, xmltv_names=xmltv_names, epg_score=epg_score,
-            enabled=enabled, status=epg_status, previous_states=previous_states
-        ))
-        used_provider_epgs.add(provider_epg)
-
-    return channels, dropped
 
 
-# Faster override again: pre-normalise aliases once per auto channel instead of
 # once per EPG candidate.
 def _normalised_alias_records(alias_texts):
     records = []
@@ -3007,7 +1858,7 @@ def _fast_auto_epg_score_records(alias_records, epg_entry):
     return score
 
 
-def _fast_epg_for_auto(provider_epg, display_name, variants, epg_fast_index):
+def _fast_epg_for_auto_fuzzy(provider_epg, display_name, variants, epg_fast_index):
     epg_base = provider_epg.replace('.uk', '')
     alias_texts = [display_name, epg_base, provider_epg]
     for variant in variants[:4]:
@@ -3037,157 +1888,16 @@ def _fast_epg_for_auto(provider_epg, display_name, variants, epg_fast_index):
     return best_channel.get('id', ''), best_channel.get('names', []), best_score, 'auto_uk_epg_matched', alternatives
 
 
-def _build_extra_groups_fast(extras, streams, previous_states):
-    search_index = []
-    for item in streams:
-        if not _is_usable_live_stream(item):
-            continue
-        search_index.append((compact_text(stream_search_text(item)), item))
-
-    channels = []
-    for extra in extras:
-        alias_compacts = [compact_text(alias) for alias in ([extra.get('name', '')] + extra.get('aliases', [])) if compact_text(alias)]
-        scored = []
-        for search_compact, item in search_index:
-            if not any(alias and alias in search_compact for alias in alias_compacts):
-                continue
-            score = _extra_match_score(extra, item)
-            if score >= MIN_STREAM_MATCH_SCORE:
-                scored.append((score, item))
-        scored.sort(key=lambda row: row[0], reverse=True)
-        variants = []
-        for score, item in scored[:MAX_VARIANTS_PER_CHANNEL]:
-            variant = _stream_to_variant(item, extra, method='extra_allowlist', match_score=score)
-            variant['priority_score'] += int(score) // 5
-            variants.append(variant)
-        variants = _unique_sorted_variants(variants)
-        if not variants:
-            continue
-        enabled = previous_states.get(extra['key'], False) if extra['key'] in previous_states else False
-        channels.append(_mark_extra_channel(_make_channel_record(
-            extra['key'], extra['name'], 'Non-UK Extras', variants,
-            xmltv_id='', xmltv_names=[], epg_score='none', status='no_uk_epg',
-            enabled=enabled, previous_states=previous_states
-        )))
-    return channels
 
 
-# Final build_channel_catalog override using fast extras.
-def build_channel_catalog(streams, epg_channels):
-    previous_states = _load_existing_enabled_states()
-    usable_streams = _clean_streams_for_catalog(streams)
-    exact_buckets = build_exact_provider_buckets(usable_streams)
-    channels = []
-    dropped = []
-    used_provider_epgs = set()
-
-    for wanted in WANTED_CHANNELS:
-        channel, drop = _build_wanted_group(wanted, usable_streams, exact_buckets, epg_channels, previous_states)
-        if channel:
-            if channel.get('key') not in previous_states:
-                channel['enabled'] = _enabled_default_for_channel(
-                    channel.get('key'), channel.get('section'), channel.get('xmltv_id'), is_core=True
-                )
-            channels.append(_mark_core_channel(channel))
-            for epg_id in wanted.get('provider_epg_ids', []):
-                used_provider_epgs.add(epg_id.lower())
-        elif drop:
-            dropped.append(drop)
-
-    auto_channels, auto_dropped = _build_auto_uk_groups(usable_streams, epg_channels, previous_states, used_provider_epgs)
-    channels.extend(_mark_auto_channel(item) for item in auto_channels)
-    dropped.extend(auto_dropped)
-
-    channels.extend(_build_extra_groups_fast(EXTRA_CHANNELS, usable_streams, previous_states))
-
-    group_order = {
-        'Sports': 1,
-        'BBC': 2,
-        'ITV': 3,
-        'Channel 4 & 5': 4,
-        'Entertainment': 5,
-        'Movies': 6,
-        'News': 7,
-        'Documentary': 8,
-        'Music': 9,
-        'Kids': 10,
-        'Other UK Channels': 50,
-        'Non-UK Extras': 99,
-    }
-
-    source_rank = {'core_mapping': 1, 'auto_uk_epg': 2, 'curated_extra': 3}
-    deduped = {}
-    for channel in channels:
-        key = channel.get('key')
-        if not key:
-            continue
-        old = deduped.get(key)
-        if old is None or source_rank.get(channel.get('catalog_source'), 50) < source_rank.get(old.get('catalog_source'), 50):
-            deduped[key] = channel
-
-    channels = list(deduped.values())
-    channels.sort(key=lambda item: (group_order.get(item.get('section'), 60), item.get('name', '').lower()))
-
-    return {
-        'version': 3,
-        'mode': 'grouped_plugin_resolver_auto_uk',
-        'server': normalised_server() if clean(SERVER) else '',
-        'output_format': OUTPUT_FORMAT,
-        'channels': channels,
-        'dropped': dropped,
-        'stats': {
-            'raw_streams': len(streams),
-            'usable_live_streams': len(usable_streams),
-            'core_channels': len([c for c in channels if c.get('catalog_source') == 'core_mapping']),
-            'auto_uk_channels': len([c for c in channels if c.get('catalog_source') == 'auto_uk_epg']),
-            'curated_extra_channels': len([c for c in channels if c.get('catalog_source') == 'curated_extra']),
-            'vod_or_non_live_dropped': max(0, len(streams) - len(usable_streams)),
-        },
-    }
 
 
-# Override again: build extras from already-cleaned live streams, so we do not
 # repeat the expensive live/VOD filter after auto discovery.
-def _build_extra_groups_fast(extras, streams, previous_states):
-    search_index = [(compact_text(stream_search_text(item)), item) for item in streams]
-
-    channels = []
-    for extra in extras:
-        alias_compacts = []
-        for alias in [extra.get('name', '')] + extra.get('aliases', []):
-            alias_compact = compact_text(alias)
-            if alias_compact and alias_compact not in alias_compacts:
-                alias_compacts.append(alias_compact)
-        scored = []
-        for search_compact, item in search_index:
-            if not any(alias in search_compact for alias in alias_compacts):
-                continue
-            score = _extra_match_score(extra, item)
-            if score >= MIN_STREAM_MATCH_SCORE:
-                scored.append((score, item))
-        scored.sort(key=lambda row: row[0], reverse=True)
-        variants = []
-        for score, item in scored[:MAX_VARIANTS_PER_CHANNEL]:
-            variant = _stream_to_variant(item, extra, method='extra_allowlist', match_score=score)
-            variant['priority_score'] += int(score) // 5
-            variants.append(variant)
-        variants = _unique_sorted_variants(variants)
-        if not variants:
-            continue
-        enabled = previous_states.get(extra['key'], False) if extra['key'] in previous_states else False
-        channels.append(_mark_extra_channel(_make_channel_record(
-            extra['key'], extra['name'], 'Non-UK Extras', variants,
-            xmltv_id='', xmltv_names=[], epg_score='none', status='no_uk_epg',
-            enabled=enabled, previous_states=previous_states
-        )))
-    return channels
 
 
 
 # ============================================================================
-# FLAM LIVE TV CATALOGUE MODE v4
-# UK + US EPG merge, grouped pattern extras, and boot-safe EPG refresh helpers.
-# This block intentionally overrides the earlier grouped Live TV functions.
+# MULTI-REGION EPG, GROUPED EXTRAS AND BOOT-SAFE REFRESH
 # ============================================================================
 
 EPG_US_URL = "https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz"
@@ -3415,7 +2125,7 @@ def _find_epg_channel_exact(provider_epgs, epg_channels):
 
 
 def _epg_for_wanted(wanted, epg_channels):
-    """Override: supports either a simple channel list or the v4 region dict."""
+    """Support either a simple channel list or the multi-region EPG dictionary."""
     region = wanted.get("epg_region") or _region_for_wanted(wanted)
     channels = _epg_channels_from_data(epg_channels, region)
 
@@ -3631,10 +2341,6 @@ def _write_filtered_epg_for_catalog(catalog, epg_root_or_data):
     return _write_merged_filtered_epg_for_catalog(catalog, {"uk": {"root": epg_root_or_data, "channels": get_epg_channels(epg_root_or_data)}})
 
 
-def _add_epg_metadata(channel, xmltv_id):
-    region = _region_from_epg_id(xmltv_id)
-    channel["epg_region"] = region
-    return channel
 
 
 def _make_channel_record(key, name, section, variants, xmltv_id="", xmltv_names=None, epg_score="", enabled=None, status="matched", previous_states=None):
@@ -4013,96 +2719,6 @@ def _build_pattern_extra_groups(patterns, streams, previous_states):
     return channels
 
 
-def build_channel_catalog(streams, epg_data):
-    previous_states = _load_existing_enabled_states()
-    usable_streams = _clean_streams_for_catalog(streams)
-    exact_buckets = build_exact_provider_buckets(usable_streams)
-    channels = []
-    dropped = []
-    used_provider_epgs = set()
-
-    # 1) Known/core mappings. Old WANTED_CHANNELS are the default ticked list, except Kids.
-    uk_epg_channels = _epg_channels_from_data(epg_data, "uk")
-    for wanted in WANTED_CHANNELS:
-        wanted["epg_region"] = "uk"
-        channel, drop = _build_wanted_group(wanted, usable_streams, exact_buckets, uk_epg_channels, previous_states)
-        if channel:
-            if channel.get("key") not in previous_states:
-                channel["enabled"] = _enabled_default_for_channel(
-                    channel.get("key"), channel.get("section"), channel.get("xmltv_id"), is_core=True
-                )
-            channel = _mark_core_channel(channel)
-            channel["epg_region"] = _region_from_epg_id(channel.get("xmltv_id")) if channel.get("xmltv_id") else "uk"
-            channels.append(channel)
-            for epg_id in wanted.get("provider_epg_ids", []):
-                used_provider_epgs.add(epg_id.lower())
-        elif drop:
-            dropped.append(drop)
-
-    # 2) Auto-discover every other provider_epg *.uk channel that maps to UK EPGShare.
-    auto_channels, auto_dropped = _build_auto_uk_groups(usable_streams, uk_epg_channels, previous_states, used_provider_epgs)
-    channels.extend(_mark_auto_channel(item) for item in auto_channels)
-    dropped.extend(auto_dropped)
-
-    # 3) Auto-discover useful provider_epg *.us channels that map to US EPGShare.
-    us_channels, us_dropped = _build_auto_us_extra_groups(usable_streams, epg_data, previous_states, used_provider_epgs)
-    channels.extend(us_channels)
-    dropped.extend(us_dropped)
-
-    # 4) Curated extras. They may get US EPG if their provider_epg matches the US EPG file.
-    channels.extend(_build_extra_groups_with_epg(EXTRA_CHANNELS, usable_streams, epg_data, previous_states))
-
-    # 5) Pattern grouped extras such as one 4K-WC entry containing 4K-WC 1, 2, 3...
-    channels.extend(_build_pattern_extra_groups(EXTRA_PATTERNS, usable_streams, previous_states))
-
-    group_order = {
-        "Sports": 1,
-        "BBC": 2,
-        "ITV": 3,
-        "Channel 4 & 5": 4,
-        "Entertainment": 5,
-        "Movies": 6,
-        "News": 7,
-        "Documentary": 8,
-        "Music": 9,
-        "Kids": 10,
-        "Other UK Channels": 50,
-        "US Extras": 80,
-        "Non-UK Extras": 99,
-    }
-
-    source_rank = {"core_mapping": 1, "auto_uk_epg": 2, "auto_us_epg": 3, "curated_extra": 4, "pattern_extra": 5}
-    deduped = {}
-    for channel in channels:
-        key = channel.get("key")
-        if not key:
-            continue
-        old = deduped.get(key)
-        if old is None or source_rank.get(channel.get("catalog_source"), 50) < source_rank.get(old.get("catalog_source"), 50):
-            deduped[key] = channel
-
-    channels = list(deduped.values())
-    channels.sort(key=lambda item: (group_order.get(item.get("section"), 60), item.get("name", "").lower()))
-
-    return {
-        "version": 4,
-        "mode": "grouped_plugin_resolver_auto_uk_us_epg",
-        "server": normalised_server() if clean(SERVER) else "",
-        "output_format": OUTPUT_FORMAT,
-        "epg_sources": {region: {"url": source.get("url"), "file": source.get("file")} for region, source in EPG_SOURCES.items()},
-        "channels": channels,
-        "dropped": dropped,
-        "stats": {
-            "raw_streams": len(streams),
-            "usable_live_streams": len(usable_streams),
-            "core_channels": len([c for c in channels if c.get("catalog_source") == "core_mapping"]),
-            "auto_uk_channels": len([c for c in channels if c.get("catalog_source") == "auto_uk_epg"]),
-            "auto_us_channels": len([c for c in channels if c.get("catalog_source") == "auto_us_epg"]),
-            "curated_extra_channels": len([c for c in channels if c.get("catalog_source") == "curated_extra"]),
-            "pattern_extra_channels": len([c for c in channels if c.get("catalog_source") == "pattern_extra"]),
-            "vod_or_non_live_dropped": max(0, len(streams) - len(usable_streams)),
-        },
-    }
 
 
 def write_report_from_catalog(catalog, filtered_epg_stats=None):
@@ -4371,87 +2987,9 @@ def refresh_epg_if_needed(max_age_hours=12, reload_pvr=True):
     return refresh_epg_only(reload_pvr=reload_pvr, force=True)
 
 
-def run_generator(reload_pvr=True):
-    timings, mark = _new_timing_tracker()
-
-    maybe_download_live_streams()
-    mark("Download/live stream cache")
-
-    input_path = Path(INPUT_JSON)
-    if not input_path.exists():
-        raise GeneratorError(
-            f"Cannot find {INPUT_JSON}. Download failed, or put live_streams.json in the same folder as this script."
-        )
-
-    print("Loading and validating live streams JSON...")
-    streams = load_and_validate_live_streams(input_path)
-    mark("Load and validate live streams")
-
-    _download_epg_sources()
-    mark("Download EPG sources")
-    print("Loading EPGShare XMLTV sources...")
-    epg_data = _load_epg_sources(require_uk=True)
-    mark("Load EPG XML sources")
-
-    print("Building grouped Live TV catalogue...")
-    catalog = build_channel_catalog(streams, epg_data)
-    mark("Build channel catalogue")
-    catalog["optimisation_version"] = OPTIMISATION_VERSION
-    catalog["timings"] = timings
-    save_catalog(catalog)
-    mark("Save catalogue")
-
-    print("Writing filtered merged EPG and plugin M3U...")
-    filtered_epg_stats = _write_filtered_epg_for_catalog(catalog, epg_data)
-    mark("Write filtered EPG")
-    write_m3u_from_catalog(catalog)
-    mark("Write M3U")
-
-    print("Writing report...")
-    catalog["timings"] = timings
-    write_report_from_catalog(catalog, filtered_epg_stats)
-    mark("Write report")
-
-    iptv_simple_settings = update_iptv_simple_paths()
-    mark("Update IPTV Simple paths")
-    pvr_reload = reload_pvr_manager() if reload_pvr else {"success": False, "message": "PVR reload skipped."}
-    mark("Reload PVR" if reload_pvr else "Skip PVR reload")
-
-    # Rewrite the report once at the end so it includes the final timing rows,
-    # including IPTV Simple/PVR work. This does not affect M3U/EPG content.
-    catalog["timings"] = timings
-    write_report_from_catalog(catalog, filtered_epg_stats)
-
-    enabled = _enabled_channels(catalog)
-    print("")
-    print(f"Done. Created: {OUTPUT_FILE}")
-    print(f"Filtered EPG: {OUTPUT_EPG_FILE}")
-    print(f"Catalogue: {CATALOG_FILE}")
-    print(f"Report: {REPORT_FILE}")
-    print(f"Enabled channels: {len(enabled)}")
-    print(f"Catalogue channels: {len(catalog.get('channels', []))}")
-    print(f"Stream variants: {sum(len(item.get('streams', [])) for item in catalog.get('channels', []))}")
-    print(f"Filtered EPG: {filtered_epg_stats}")
-
-    return {
-        "success": True,
-        "playlist": str(Path(OUTPUT_FILE)),
-        "epg": str(Path(OUTPUT_EPG_FILE)),
-        "report": str(Path(REPORT_FILE)),
-        "catalog": str(Path(CATALOG_FILE)),
-        "channels": len(enabled),
-        "catalog_channels": len(catalog.get("channels", [])),
-        "disabled": len(catalog.get("channels", [])) - len(enabled),
-        "stream_variants": sum(len(item.get("streams", [])) for item in catalog.get("channels", [])),
-        "dropped": len(catalog.get("dropped", [])),
-        "filtered_epg": filtered_epg_stats,
-        "iptv_simple_settings": iptv_simple_settings,
-        "pvr_reload": pvr_reload,
-        "timings": timings,
-    }
 
 # ============================================================================
-# FLAM Live TV display-label cleanup v1
+# USER-FACING STREAM LABEL CLEANUP
 #
 # User-facing stream labels are now cleaned in a provider-agnostic way:
 #   - original provider names stay stored as "name" for matching/debugging
@@ -4691,7 +3229,7 @@ def play_channel(channel_key):
 
 
 # ============================================================================
-# FLAM LIVE TV HYBRID REFERENCE GENERATION v1
+# REFERENCE/DELTA GENERATION AND ATOMIC OUTPUT
 #
 # Conservative acceleration layer:
 #   * bundled/local references contain no credentials or direct stream URLs
@@ -4702,12 +3240,6 @@ def play_channel(channel_key):
 #   * output is staged, validated, and committed atomically per file
 # ============================================================================
 
-import copy as _copy
-import hashlib as _hashlib
-import os as _os
-import shutil as _shutil
-import time as _time
-from functools import lru_cache as _lru_cache
 
 try:
     from modules import iptv_reference_cache as _iptv_ref
@@ -4720,24 +3252,22 @@ except Exception:
 HYBRID_OPTIMISATION_VERSION = "safe-code-optimisations-v1+display-label-cleanup-v1+hybrid-reference-v2"
 IPTV_BUNDLED_REFERENCE_FILE = Path(__file__).resolve().parents[2] / "data" / "iptv_reference.json"
 
-# Keep the proven v4 builder as the authoritative fallback.
-_FULL_BUILD_CHANNEL_CATALOG_V4 = build_channel_catalog
+# Full matching remains the authoritative fallback when reference reuse is unsafe.
 
 # Cache repeated normalisation.  The original generator called these helpers
 # millions of times for the same stream/EPG strings on low-power devices.
-_NORMALISE_TEXT_UNCACHED = normalise_text
 
 
-@_lru_cache(maxsize=65536)
+@lru_cache(maxsize=65536)
 def _normalise_text_cached(value):
-    return _NORMALISE_TEXT_UNCACHED(value)
+    return _normalise_text_uncached(value)
 
 
 def normalise_text(value):
     return _normalise_text_cached(clean(value))
 
 
-@_lru_cache(maxsize=65536)
+@lru_cache(maxsize=65536)
 def _compact_text_cached(value):
     return re.sub(r"[^a-z0-9]+", "", normalise_text(value))
 
@@ -4757,13 +3287,33 @@ def _safe_load_catalog_file(path):
 
 
 def _hybrid_enabled_states(previous_catalog):
+    """Return current choices plus tombstoned choices for temporarily missing channels."""
     if not isinstance(previous_catalog, dict):
         return {}
-    return {
-        str(item.get("key")): bool(item.get("enabled"))
-        for item in previous_catalog.get("channels", [])
-        if item.get("key")
+    states = {
+        clean(key): bool(value)
+        for key, value in (previous_catalog.get("selection_history") or {}).items()
+        if clean(key)
     }
+    for item in previous_catalog.get("channels", []):
+        key = clean(item.get("key"))
+        if key:
+            states[key] = bool(item.get("enabled"))
+    return states
+
+
+def _attach_selection_history(catalog, previous_states=None):
+    history = {
+        clean(key): bool(value)
+        for key, value in (previous_states or {}).items()
+        if clean(key)
+    }
+    for channel in catalog.get("channels", []):
+        key = clean(channel.get("key"))
+        if key:
+            history[key] = bool(channel.get("enabled"))
+    catalog["selection_history"] = history
+    return catalog
 
 
 def _hybrid_reference_variant(item, channel, method):
@@ -4777,41 +3327,9 @@ def _hybrid_reference_variant(item, channel, method):
     return variant
 
 
-def _is_potential_catalog_stream(item):
-    provider_epg = get_provider_epg(item)
-    provider_epg_lower = provider_epg.lower()
-    if provider_epg_lower in CORE_PROVIDER_EPG_IDS:
-        return True
-    if provider_epg_lower.endswith(".uk"):
-        return True
-    if _is_us_epg_id(provider_epg_lower):
-        return _is_useful_us_candidate(item)
-
-    if _is_volatile_dynamic_event(item):
-        return False
-
-    search = " ".join([get_stream_name(item), provider_epg, _clean_category(item)])
-    search_compact = compact_text(search)
-    if "mutv" in search_compact or "manchesterunited" in search_compact:
-        return True
-
-    for extra in EXTRA_CHANNELS:
-        aliases = [extra.get("name", "")] + extra.get("aliases", [])
-        if any(compact_text(alias) and compact_text(alias) in search_compact for alias in aliases):
-            if _extra_match_score(extra, item) >= MIN_STREAM_MATCH_SCORE:
-                return True
-
-    search_norm = normalise_text(search)
-    for pattern_extra in EXTRA_PATTERNS:
-        try:
-            if re.search(pattern_extra.get("pattern", ""), search_norm, re.I):
-                return True
-        except Exception:
-            continue
-    return False
 
 
-def _safe_merge_duplicate_catalog_channels(catalog):
+def _merge_duplicate_catalog_channels_by_epg(catalog):
     """Merge only objectively identical catalogue rows.
 
     A merge requires the same XMLTV id plus either the same normalised display
@@ -4879,115 +3397,127 @@ def _safe_merge_duplicate_catalog_channels(catalog):
     return catalog
 
 
-def _hybrid_reference_candidates(previous_catalog):
+def _hybrid_reference_candidates(previous_catalog, diagnostics=None):
     candidates = []
     if _iptv_ref is None:
         return candidates
 
     if previous_catalog:
         local_meta = previous_catalog.get("reference_meta") or {}
+        try:
+            local_schema = int(local_meta.get("schema_version") or 0)
+        except (TypeError, ValueError, OverflowError):
+            local_schema = 0
         if (
-            int(local_meta.get("schema_version") or 0) == _iptv_ref.REFERENCE_SCHEMA_VERSION
+            local_schema == _iptv_ref.REFERENCE_SCHEMA_VERSION
             and clean(local_meta.get("logic_version")) == _iptv_ref.REFERENCE_LOGIC_VERSION
         ):
+            local_catalog = copy.deepcopy(previous_catalog)
+            local_catalog["channels"] = [
+                channel for channel in local_catalog.get("channels", [])
+                if channel.get("catalog_source") != "dynamic_special"
+            ]
             candidates.append({
                 "schema_version": _iptv_ref.REFERENCE_SCHEMA_VERSION,
                 "logic_version": _iptv_ref.REFERENCE_LOGIC_VERSION,
-                "catalog": previous_catalog,
+                "catalog": local_catalog,
                 "source_name": "local previous catalogue",
             })
+        elif isinstance(diagnostics, list):
+            diagnostics.append("local previous catalogue uses an older reference schema or logic version")
 
-    bundled = _iptv_ref.load_reference_file(IPTV_BUNDLED_REFERENCE_FILE, "bundled reference")
+    bundled = _iptv_ref.load_reference_file(
+        IPTV_BUNDLED_REFERENCE_FILE,
+        "bundled reference",
+        diagnostics=diagnostics,
+    )
     if bundled:
         candidates.append(bundled)
     return candidates
 
 
-def _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data):
-    if _iptv_ref is None:
-        return []
-    missing = _iptv_ref.attach_variant_fingerprints(catalog, usable_streams)
-    catalog["reference_meta"] = _iptv_ref.make_reference_meta(
-        usable_streams,
+
+def _migrate_previous_reference_candidate(previous_catalog, stable_streams, epg_data, raw_count):
+    """Re-fingerprint a verified older local catalogue for the current cache schema.
+
+    This preserves locally discovered channels across a cache-schema upgrade.
+    Dynamic Special Events are excluded because they are always rebuilt live.
+    Migration is accepted only when every retained stable variant can be matched
+    safely to the current provider response.
+    """
+    if _iptv_ref is None or not isinstance(previous_catalog, dict):
+        return None, ""
+
+    local_meta = previous_catalog.get("reference_meta") or {}
+    try:
+        local_schema = int(local_meta.get("schema_version") or 0)
+    except (TypeError, ValueError, OverflowError):
+        local_schema = 0
+    if (
+        local_schema == _iptv_ref.REFERENCE_SCHEMA_VERSION
+        and clean(local_meta.get("logic_version")) == _iptv_ref.REFERENCE_LOGIC_VERSION
+    ):
+        return None, ""
+
+    old_manifest = Counter((local_meta.get("inventory") or {}).get("manifest") or [])
+    if not old_manifest:
+        return None, "older local catalogue has no inventory manifest to migrate"
+
+    # Preserve the old manifest boundary under the new fingerprint algorithm.
+    # Streams that were not represented by the old manifest stay outside the
+    # migrated reference so try_build_from_reference returns them to the normal
+    # partial matcher instead of incorrectly calling the migration exact.
+    remaining = Counter(old_manifest)
+    compatible_streams = []
+    for item in stable_streams:
+        legacy_fp = _iptv_ref.legacy_v3_stream_fingerprint(item)
+        if legacy_fp and remaining.get(legacy_fp, 0) > 0:
+            compatible_streams.append(item)
+            remaining[legacy_fp] -= 1
+
+    if not compatible_streams:
+        return None, "older local inventory could not be mapped to the current fingerprint format"
+
+    migrated = copy.deepcopy(previous_catalog)
+    migrated["channels"] = [
+        channel for channel in migrated.get("channels", [])
+        if channel.get("catalog_source") != "dynamic_special"
+    ]
+    stable_view = {"channels": migrated.get("channels", [])}
+    missing = _iptv_ref.attach_variant_fingerprints(stable_view, stable_streams)
+    if missing:
+        return None, "older local catalogue could not be safely re-fingerprinted (%s variants unmatched)" % len(missing)
+
+    migrated["reference_meta"] = _iptv_ref.make_reference_meta(
+        compatible_streams,
         epg_data,
-        raw_count=len(streams),
+        raw_count=raw_count,
         server=normalised_server() if clean(SERVER) else "",
         username=USERNAME,
     )
-    return missing
+    migrated_fingerprints = set(migrated["reference_meta"]["inventory"].get("manifest") or [])
+    for channel in migrated.get("channels", []):
+        channel["streams"] = [
+            variant for variant in channel.get("streams", [])
+            if clean(variant.get("source_fingerprint")) in migrated_fingerprints
+        ]
+        channel["stream_count"] = len(channel["streams"])
+    migrated["reference_meta"]["dynamic_streams_excluded"] = 0
+    migrated["reference_meta"]["migration_unresolved_streams"] = max(
+        0, len(stable_streams) - len(compatible_streams)
+    )
+    migrated["server"] = normalised_server() if clean(SERVER) else ""
+    migrated["output_format"] = OUTPUT_FORMAT
+    return {
+        "schema_version": _iptv_ref.REFERENCE_SCHEMA_VERSION,
+        "logic_version": _iptv_ref.REFERENCE_LOGIC_VERSION,
+        "catalog": migrated,
+        "source_name": "migrated local previous catalogue",
+    }, ""
 
 
-def build_channel_catalog(streams, epg_data):
-    """Hybrid override with an exact/incremental reference path and full fallback."""
-    previous_catalog = _safe_load_catalog_file(CATALOG_FILE)
-    previous_states = _hybrid_enabled_states(previous_catalog)
-    usable_streams = _clean_streams_for_catalog(streams)
 
-    if _iptv_ref is not None:
-        account_fp = _iptv_ref.account_fingerprint(
-            normalised_server() if clean(SERVER) else "",
-            USERNAME,
-        )
-        incomplete, incomplete_reason = _iptv_ref.suspicious_incomplete(
-            previous_catalog,
-            len(usable_streams),
-            account_fp,
-        )
-        if incomplete:
-            raise GeneratorError(
-                "%s Existing working IPTV files were kept unchanged. Try again later." % incomplete_reason
-            )
 
-        epg_signatures = _iptv_ref.build_epg_signatures(epg_data)
-        fallback_reasons = []
-        for payload in _hybrid_reference_candidates(previous_catalog):
-            result = _iptv_ref.try_build_from_reference(
-                payload=payload,
-                usable_streams=usable_streams,
-                current_epg_meta=epg_signatures,
-                previous_enabled_states=previous_states,
-                raw_count=len(streams),
-                server=normalised_server() if clean(SERVER) else "",
-                output_format=OUTPUT_FORMAT,
-                is_potential_catalog_stream=_is_potential_catalog_stream,
-                variant_factory=_hybrid_reference_variant,
-                unique_sort_variants=_unique_sorted_variants,
-            )
-            if result.get("success"):
-                catalog = result["catalog"]
-                catalog["version"] = 5
-                catalog["mode"] = "grouped_plugin_resolver_hybrid_reference_uk_us_epg"
-                catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
-                catalog = _safe_merge_duplicate_catalog_channels(catalog)
-                missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
-                if missing:
-                    fallback_reasons.append("reference fingerprint refresh was incomplete")
-                    break
-                return catalog
-            fallback_reasons.append("%s: %s" % (
-                payload.get("source_name", "reference"),
-                result.get("reason", "not reusable"),
-            ))
-    else:
-        fallback_reasons = ["reference helper unavailable"]
-
-    # Reliability-first fallback: run the existing full v4 matching logic.
-    catalog = _FULL_BUILD_CHANNEL_CATALOG_V4(streams, epg_data)
-    catalog["version"] = 5
-    catalog["mode"] = "grouped_plugin_resolver_hybrid_reference_uk_us_epg"
-    catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
-    catalog["reference_build"] = {
-        "mode": "full",
-        "source": "full matcher",
-        "fallback_reasons": fallback_reasons[-8:],
-    }
-    catalog = _safe_merge_duplicate_catalog_channels(catalog)
-    missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
-    if missing:
-        catalog.setdefault("warnings", []).append(
-            "%s selected variants could not be fingerprinted; the next run may use full matching." % len(missing)
-        )
-    return catalog
 
 
 def _stage_path(directory, name):
@@ -5102,7 +3632,7 @@ def _validate_staged_generation(catalog, streams, catalog_path, m3u_path, epg_pa
 def _commit_staged_files(stage_map):
     backup_dir = Path(IPTV_OUTPUT_DIR) / ".generation_backup"
     if backup_dir.exists():
-        _shutil.rmtree(str(backup_dir), ignore_errors=True)
+        shutil.rmtree(str(backup_dir), ignore_errors=True)
     backup_dir.mkdir(parents=True, exist_ok=True)
     backups = {}
     try:
@@ -5110,7 +3640,7 @@ def _commit_staged_files(stage_map):
             final_path = Path(final_path)
             if final_path.exists():
                 backup = backup_dir / final_path.name
-                _shutil.copy2(str(final_path), str(backup))
+                shutil.copy2(str(final_path), str(backup))
                 backups[final_path] = backup
 
         for final_path, staged_path in stage_map.items():
@@ -5124,14 +3654,14 @@ def _commit_staged_files(stage_map):
             backup = backups.get(final_path)
             try:
                 if backup and backup.exists():
-                    _shutil.copy2(str(backup), str(final_path))
+                    shutil.copy2(str(backup), str(final_path))
                 elif final_path.exists() and final_path not in backups:
                     final_path.unlink()
             except Exception:
                 pass
         raise
     finally:
-        _shutil.rmtree(str(backup_dir), ignore_errors=True)
+        shutil.rmtree(str(backup_dir), ignore_errors=True)
 
 
 def _atomic_final_catalog(catalog):
@@ -5148,10 +3678,742 @@ def _atomic_final_report(catalog, filtered_epg_stats):
     temp.replace(final)
 
 
+
+
+# ============================================================================
+# CATEGORY DISCOVERY, NO-EPG CHANNELS AND SPECIAL EVENTS
+#
+# Final reliability/UX layer:
+#   * provider categories are downloaded and cached when available
+#   * genuine channels may exist and be enabled without XMLTV data
+#   * canonical EPG IDs recover obvious matches such as mtv.uk -> MTV.HD.uk
+#   * blank-EPG UK/category channels are still exposed in Manage Channels
+#   * active PPV/event-bank rows are rebuilt live under Special Events
+#   * dynamic event title changes are excluded from stable reference identity
+#   * reference reuse performs a partial match for only unresolved stable rows
+# ============================================================================
+
+LIVE_CATEGORIES_FILE = str(IPTV_CACHE_DIR / "live_categories.json")
+CURRENT_LIVE_CATEGORY_MAP = {}
+CATEGORY_DISCOVERY_SOURCE = "none"
+HYBRID_OPTIMISATION_VERSION = (
+    "safe-code-optimisations-v1+display-label-cleanup-v1+"
+    "delta-reference-v4+no-epg-channels-v1+special-events-v1"
+)
+
+# A deliberately small alias table for branding changes that canonical ID
+# normalisation cannot infer by itself. Keys/values are XMLTV/provider IDs.
+CANONICAL_EPG_ID_ALIASES = {
+    "alibi.uk": "U.and.alibi.HD.uk",
+    "uktvplayalibi.uk": "U.and.alibi.HD.uk",
+}
+
+TRUSTED_NO_EPG_CATEGORY_TERMS = (
+    "united kingdom", "uk entertainment", "uk music", "music hd", "music 4k",
+    "uk kids", "uk documentary", "uk news", "uk sports", "uk movies",
+    "entertainment hd", "documentary hd", "kids hd", "sports hd", "movies hd",
+)
+
+DYNAMIC_EVENT_FAMILY_PATTERNS = (
+    ("ESPN+", r"(?:\(|\b)(?:US\s*)?ESPN\+\s*0*(\d{1,4})(?:\)|\b)"),
+    ("FloSports", r"\bFLSP\s*0*(\d{1,4})\b"),
+    ("BTN+", r"\bBTN\+\s*0*(\d{1,4})\b"),
+    ("Peacock", r"\bPEACOCK\s*0*(\d{1,4})\b"),
+    ("MiLB", r"\bMILB\s*0*(\d{1,4})\b"),
+    ("Stan Sport", r"\bSTAN(?:\s+SPORTS?)?\s*0*(\d{1,4})\b"),
+    ("MAX PPV", r"\bMAX\s+PPV\s*0*(\d{1,4})\b"),
+    ("Apple TV F1 PPV", r"\bAPPLE\s+TV\s+F1\s+PPV\s*0*(\d{1,4})\b"),
+    ("Soccer PPV", r"\bSOCCER\s+PPV\s*0*(\d{1,4})\b"),
+    ("NFHS PPV", r"\bNFHS\s+PPV\s*0*(\d{1,4})\b"),
+    ("DAZN PPV", r"\bDAZN\s+PPV\s*0*(\d{1,4})\b"),
+    ("PPV", r"\bPPV(?:\s+EVENT)?\s*0*(\d{1,4})\b"),
+)
+
+
+def build_live_categories_url():
+    server = normalised_server()
+    query = urllib.parse.urlencode({
+        "username": USERNAME,
+        "password": PASSWORD,
+        "action": "get_live_categories",
+    })
+    return "%s/player_api.php?%s" % (server, query)
+
+
+def maybe_download_live_categories():
+    """Refresh provider category names without making generation depend on them."""
+    if not DOWNLOAD_LIVE_STREAMS:
+        return {"downloaded": False, "source": "offline"}
+    try:
+        validate_login_config()
+        download_file(build_live_categories_url(), LIVE_CATEGORIES_FILE, description="live categories JSON")
+        return {"downloaded": True, "source": "provider"}
+    except Exception as error:
+        # Categories improve discovery, but a temporary category-endpoint failure
+        # must never prevent a working stream/EPG generation.
+        try:
+            if xbmc:
+                xbmc.log("[FLAM IPTV Generator] Category refresh warning: %s" % redact_url(str(error)), xbmc.LOGWARNING)
+        except Exception:
+            pass
+        return {
+            "downloaded": False,
+            "source": "cached" if Path(LIVE_CATEGORIES_FILE).exists() else "name inference",
+            "warning": redact_url(str(error)),
+        }
+
+
+def _load_live_category_map(path=LIVE_CATEGORIES_FILE):
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return {}
+    if not isinstance(payload, list):
+        return {}
+    result = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        category_id = clean(item.get("category_id") or item.get("id"))
+        category_name = clean(item.get("category_name") or item.get("name"))
+        if category_id and category_name:
+            result[category_id] = category_name
+    return result
+
+
+def _header_category_label(value):
+    text = clean(value)
+    if not text or "#" not in text:
+        return ""
+    text = re.sub(r"#+", " ", text)
+    text = _safe_kodi_display_text(text)
+    text = re.sub(r"(?i)\b(RAW|HD|FHD|UHD|SD|3840P|2160P)\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" -:|")
+    return text
+
+
+def _infer_category_map_from_headers(streams):
+    labels = {}
+    for item in streams:
+        category_id = clean(item.get("category_id"))
+        label = _header_category_label(get_stream_name(item))
+        if category_id and label:
+            labels.setdefault(category_id, set()).add(label)
+    # Only trust a header-derived category when the category has one clear label.
+    return {key: next(iter(values)) for key, values in labels.items() if len(values) == 1}
+
+
+def _annotate_stream_categories(streams, provider_map=None):
+    global CURRENT_LIVE_CATEGORY_MAP, CATEGORY_DISCOVERY_SOURCE
+    provider_map = dict(provider_map or {})
+    inferred = _infer_category_map_from_headers(streams)
+    merged = dict(inferred)
+    merged.update(provider_map)
+    CURRENT_LIVE_CATEGORY_MAP = merged
+    CATEGORY_DISCOVERY_SOURCE = "provider" if provider_map else ("header inference" if inferred else "none")
+    for item in streams:
+        if not isinstance(item, dict):
+            continue
+        category_id = clean(item.get("category_id"))
+        category_name = clean(item.get("category_name")) or merged.get(category_id, "")
+        if category_name:
+            item["_category_name"] = category_name
+    return merged
+
+
+def _clean_category(item):
+    return clean(get_field(item, "_category_name", "category_name", "category", "group"))
+
+
+def _canonical_epg_identity(value):
+    text = clean(value).lower()
+    text = re.sub(r"\.(uk|us\d*)$", "", text)
+    text = unicodedata.normalize("NFKD", text)
+    text = text.replace("+", " plus ")
+    tokens = re.findall(r"[a-z0-9]+", text)
+    ignored = {"hd", "fhd", "uhd", "sd", "raw", "channel", "tv"}
+    return "".join(token for token in tokens if token not in ignored)
+
+
+def _canonical_epg_match(provider_epg, epg_channels):
+    provider_epg = clean(provider_epg)
+    if not provider_epg:
+        return None
+    exact = _find_epg_channel_exact([provider_epg], epg_channels)
+    if exact:
+        return exact
+
+    alias_id = CANONICAL_EPG_ID_ALIASES.get(provider_epg.lower())
+    if alias_id:
+        exact = _find_epg_channel_exact([alias_id], epg_channels)
+        if exact:
+            return exact
+
+    wanted = _canonical_epg_identity(provider_epg)
+    if not wanted:
+        return None
+    matches = []
+    for channel in epg_channels or []:
+        channel_id = clean(channel.get("id"))
+        identities = {_canonical_epg_identity(channel_id)}
+        identities.update(_canonical_epg_identity(name) for name in channel.get("names", []))
+        if wanted in identities:
+            matches.append(channel)
+    unique = []
+    seen = set()
+    for channel in matches:
+        channel_id = clean(channel.get("id"))
+        if channel_id and channel_id not in seen:
+            unique.append(channel)
+            seen.add(channel_id)
+    return unique[0] if len(unique) == 1 else None
+
+
+
+
+def _fast_epg_for_auto(provider_epg, display_name, variants, epg_fast_index):
+    epg_channels = [entry.get("channel") for entry in epg_fast_index if entry.get("channel")]
+    canonical = _canonical_epg_match(provider_epg, epg_channels)
+    if canonical:
+        return canonical.get("id", ""), canonical.get("names", []), 5000, "canonical_epg_id", [(5000, canonical)]
+    return _fast_epg_for_auto_fuzzy(provider_epg, display_name, variants, epg_fast_index)
+
+
+def _enabled_default_for_channel(key, section, xmltv_id, is_core=False):
+    wanted = CHANNEL_BY_KEY.get(key) or {}
+    if wanted.get("enabled_default") is False:
+        return False
+    if section in {"Kids", "Non-UK Extras", "US Extras"}:
+        return False
+    if section == "Special Events":
+        return True
+    # EPG availability is deliberately not used as an enable/disable decision.
+    return True
+
+
+def _channel_default_enabled(group_name, xmltv_id):
+    if group_name in {"Kids", "Non-UK Extras", "US Extras"}:
+        return False
+    return True
+
+
+def _mark_auto_channel(channel):
+    if channel:
+        channel["catalog_source"] = "auto_uk_epg" if channel.get("xmltv_id") else "auto_uk_no_epg"
+        channel["default_enabled_reason"] = (
+            "trusted UK channel enabled by default" if channel.get("enabled") else "disabled by channel classification/user choice"
+        )
+    return channel
+
+
+def _build_auto_uk_groups(streams, epg_channels, previous_states, used_provider_epgs):
+    """Auto-discover provider *.uk groups even when XMLTV is unavailable."""
+    epg_fast_index = _prepare_epg_fast_index(epg_channels)
+    buckets = {}
+    for item in streams:
+        if not _is_auto_uk_candidate(item):
+            continue
+        epg = get_provider_epg(item)
+        if epg in used_provider_epgs:
+            continue
+        buckets.setdefault(epg, []).append(item)
+
+    channels = []
+    review = []
+    for provider_epg, items in sorted(buckets.items()):
+        variants = []
+        pseudo = {"group": "Other UK Channels"}
+        for item in items:
+            variant = _stream_to_variant(item, pseudo, method="auto_provider_epg_uk", match_score="auto")
+            variant["priority_score"] += 80
+            variants.append(variant)
+        variants = _unique_sorted_variants(variants)
+        if not variants:
+            continue
+
+        best = _best_variant_for_name(variants)
+        best_item = next((item for item in items if str(get_stream_id(item)) == str(best.get("stream_id"))), items[0])
+        display_name = _auto_display_name_from_item(best_item)
+        xmltv_id, xmltv_names, epg_score, epg_status, alternatives = _fast_epg_for_auto(
+            provider_epg, display_name, variants, epg_fast_index
+        )
+        section = _infer_auto_uk_section(display_name, best_item)
+        key = _auto_key_from_provider_epg(provider_epg, display_name)
+        default_enabled = _enabled_default_for_channel(key, section, xmltv_id, is_core=False)
+        enabled = previous_states.get(key, default_enabled) if key in previous_states else default_enabled
+        status = epg_status if xmltv_id else ("epg_ambiguous" if epg_status == "ambiguous" else "epg_not_available")
+        channel = _make_channel_record(
+            key, display_name, section, variants,
+            xmltv_id=xmltv_id, xmltv_names=xmltv_names, epg_score=epg_score,
+            enabled=enabled, status=status, previous_states=previous_states,
+        )
+        channel["catalog_source"] = "auto_uk_epg" if xmltv_id else "auto_uk_no_epg"
+        channel["provider_epg_id"] = provider_epg
+        if not xmltv_id:
+            channel["epg_alternatives"] = alternatives
+            review.append({
+                "name": display_name,
+                "reason": "Included without EPG; no confident EPGShare match for %s" % provider_epg,
+                "drop_status": status,
+                "epg_alternatives": alternatives,
+            })
+        channels.append(channel)
+        used_provider_epgs.add(provider_epg)
+    return channels, review
+
+
+def _is_header_or_separator(item):
+    name = clean(get_stream_name(item))
+    if not name:
+        return True
+    if name.count("#") >= 3:
+        return True
+    stripped = re.sub(r"[\s#_\-=|:]+", "", name)
+    return len(stripped) < 3
+
+
+def _event_status(item):
+    name = clean(get_stream_name(item)).upper().strip()
+    if re.match(r"^(ENDED?|END)\s*\|", name):
+        return "ended"
+    if re.match(r"^LIVE\s*\|", name):
+        return "live"
+    if re.match(r"^(NEXT|UPCOMING)\s*\|", name):
+        return "upcoming"
+    normalised = normalise_text(name)
+    if any(term in normalised for term in ("no event streaming", "no event scheduled", "offline", "placeholder", "test stream")):
+        return "inactive"
+    return "active"
+
+
+def _dynamic_event_family_slot(item):
+    raw = clean(get_stream_name(item))
+    for family, pattern in DYNAMIC_EVENT_FAMILY_PATTERNS:
+        match = re.search(pattern, raw, re.I)
+        if match:
+            return family, clean(match.group(1)).lstrip("0") or "0"
+    category = _clean_category(item)
+    category_norm = normalise_text(category)
+    if "ppv" in category_norm or "event" in category_norm:
+        return _title_keep_acronyms(category), clean(get_stream_id(item))
+    return "", ""
+
+
+def _is_dynamic_event_candidate(item):
+    if not _is_usable_live_stream(item) or get_provider_epg(item):
+        return False
+    if _is_header_or_separator(item):
+        return False
+    raw = clean(get_stream_name(item))
+    normalised = normalise_text("%s %s" % (raw, _clean_category(item)))
+    family, _slot = _dynamic_event_family_slot(item)
+    if family:
+        return True
+    if re.match(r"^(LIVE|NEXT|UPCOMING|ENDED?|END)\s*\|", raw, re.I) and any(
+        term in normalised for term in ("event", "ppv", "8k exclusive", "espn plus", "flosports", "btn plus")
+    ):
+        return True
+    return any(term in normalised for term in (
+        "pay per view", "live event", "main event", "fight night", "box office event",
+    ))
+
+
+def _is_active_dynamic_event(item):
+    if not _is_dynamic_event_candidate(item):
+        return False
+    status = _event_status(item)
+    if status in {"ended", "inactive"}:
+        return False
+    name_norm = normalise_text(get_stream_name(item))
+    if any(term in name_norm for term in ("replay", "full event replay", "backup")):
+        return False
+    return True
+
+
+def _clean_event_title(item):
+    raw = _safe_kodi_display_text(get_stream_name(item))
+    status = _event_status(item)
+    family, slot = _dynamic_event_family_slot(item)
+    parts = [clean(part) for part in raw.split("|")]
+    meaningful = []
+    for index, part in enumerate(parts):
+        if not part:
+            continue
+        norm = normalise_text(part)
+        if index == 0 and norm in {"live", "next", "upcoming", "ended", "end"}:
+            continue
+        if family and re.search(r"(?:ESPN\+|FLSP|BTN\+|PEACOCK|MILB|STAN|MAX\s+PPV|PPV)\s*0*%s\b" % re.escape(slot or "0"), part, re.I):
+            continue
+        if re.search(r"(?i)\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b.*\bUTC\b", part):
+            continue
+        if re.search(r"(?i)\b8K\s+EXCLUSIVE\b", part):
+            continue
+        if re.match(r"(?i)^(UK|US|USA|CA|AU|NZ|VIP|NOW)\s*:", part):
+            # Usually the final technical slot label.
+            if "PPV" in part.upper() or family:
+                continue
+        if norm in {"hd", "fhd", "uhd", "4k", "raw", "hevc", "event"}:
+            continue
+        cleaned = re.sub(r"(?i)\s*\([^)]*\b(?:UK|US)\b[^)]*\)\s*$", "", part).strip()
+        cleaned = re.sub(r"(?i)\b(?:FHD|HD|UHD|4K|RAW|HEVC|H265|50FPS|60FPS)\b", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:|")
+        if cleaned:
+            meaningful.append(cleaned)
+
+    if not meaningful:
+        text = _clean_variant_base_for_display(raw)
+        text = re.sub(r"(?i)\b(?:PPV|PAY\s+PER\s+VIEW|LIVE\s+EVENT)\b", " ", text)
+        text = re.sub(r"\s+", " ", text).strip(" -:|")
+        meaningful = [text] if text else []
+    if not meaningful:
+        return ""
+    # Keep enough detail to distinguish rounds/teams, without exposing slot noise.
+    title = " · ".join(meaningful[:5])
+    title = _title_keep_acronyms(title)
+    if status == "live":
+        return "LIVE: %s" % title
+    if status == "upcoming":
+        return "Upcoming: %s" % title
+    return title
+
+
+
+
+
+
+def _trusted_no_epg_category(item):
+    category = normalise_text(_clean_category(item))
+    if any(term in category for term in TRUSTED_NO_EPG_CATEGORY_TERMS):
+        return True
+    # Header-derived labels such as "MUSIC" are safe only for UK-prefixed rows.
+    name = clean(get_stream_name(item)).upper()
+    if any(term in category for term in ("music", "entertainment", "documentary", "kids", "news", "sports", "cinema", "movies")):
+        return name.startswith(("UK:", "NOW:", "VIP:"))
+    return False
+
+
+def _stable_channel_name_from_item(item):
+    name = _clean_variant_base_for_display(get_stream_name(item))
+    name = re.sub(r"(?i)\b(?:SERVER|SOURCE|FEED)\s*\d+\b", " ", name)
+    name = re.sub(r"\s+", " ", name).strip(" -:|")
+    return name
+
+
+def _is_stable_no_epg_candidate(item):
+    if not _is_usable_live_stream(item) or get_provider_epg(item):
+        return False
+    if _is_header_or_separator(item) or _is_dynamic_event_candidate(item):
+        return False
+    if _event_status(item) in {"ended", "inactive"}:
+        return False
+    return _trusted_no_epg_category(item)
+
+
+def _add_no_epg_stable_channels(catalog, stable_streams, previous_states):
+    channels = catalog.setdefault("channels", [])
+    used_ids = {
+        clean(variant.get("stream_id"))
+        for channel in channels
+        for variant in channel.get("streams", [])
+        if clean(variant.get("stream_id"))
+    }
+    name_index = {}
+    for channel in channels:
+        identity = compact_text(_strip_quality_words(channel.get("name", "")))
+        if identity:
+            name_index.setdefault(identity, []).append(channel)
+
+    remaining = {}
+    attached = 0
+    for item in stable_streams:
+        stream_id = clean(get_stream_id(item))
+        if not stream_id or stream_id in used_ids or not _is_stable_no_epg_candidate(item):
+            continue
+        display = _stable_channel_name_from_item(item)
+        identity = compact_text(_strip_quality_words(display))
+        if not identity:
+            continue
+        targets = name_index.get(identity, [])
+        if len(targets) == 1:
+            target = targets[0]
+            target.setdefault("streams", []).append(
+                _stream_to_variant(item, {"name": target.get("name", ""), "group": target.get("section", "")}, method="no_epg_name_attach", match_score="exact_name")
+            )
+            target["streams"] = _unique_sorted_variants(target["streams"])
+            target["stream_count"] = len(target["streams"])
+            if not target.get("logo"):
+                target["logo"] = get_logo(item)
+            used_ids.add(stream_id)
+            attached += 1
+            continue
+        remaining.setdefault(identity, {"name": display, "items": []})["items"].append(item)
+
+    created = 0
+    for identity, payload in remaining.items():
+        variants = [
+            _stream_to_variant(item, {"name": payload["name"], "group": "Other UK Channels"}, method="auto_no_epg_category", match_score="category")
+            for item in payload["items"]
+        ]
+        variants = _unique_sorted_variants(variants)
+        if not variants:
+            continue
+        section = _infer_auto_uk_section(payload["name"], payload["items"][0])
+        key = "uk_noepg_%s" % re.sub(r"[^a-z0-9]+", "_", identity.lower()).strip("_")[:70]
+        enabled = previous_states.get(key, _enabled_default_for_channel(key, section, "", is_core=False))
+        channel = _make_channel_record(
+            key, payload["name"], section, variants,
+            xmltv_id="", xmltv_names=[], epg_score="none",
+            enabled=enabled, status="epg_not_available", previous_states=previous_states,
+        )
+        channel["catalog_source"] = "auto_no_epg"
+        channel["default_enabled_reason"] = "trusted UK channel enabled; EPG unavailable"
+        channels.append(channel)
+        created += 1
+
+    stats = dict(catalog.get("stats") or {})
+    stats["no_epg_variants_attached"] = attached
+    stats["no_epg_channels_created"] = created
+    catalog["stats"] = stats
+    return catalog
+
+
+def _stable_reference_streams(usable_streams):
+    return [item for item in usable_streams if not _is_dynamic_event_candidate(item)]
+
+
+def _is_potential_catalog_stream(item):
+    if _is_dynamic_event_candidate(item):
+        return False
+    provider_epg = get_provider_epg(item).lower()
+    if provider_epg in CORE_PROVIDER_EPG_IDS or provider_epg.endswith(".uk"):
+        return True
+    if _is_us_epg_id(provider_epg):
+        return _is_useful_us_candidate(item)
+    if _is_stable_no_epg_candidate(item):
+        return True
+    search = " ".join([get_stream_name(item), provider_epg, _clean_category(item)])
+    search_compact = compact_text(search)
+    if "mutv" in search_compact or "manchesterunited" in search_compact:
+        return True
+    for extra in EXTRA_CHANNELS:
+        aliases = [extra.get("name", "")] + extra.get("aliases", [])
+        if any(compact_text(alias) and compact_text(alias) in search_compact for alias in aliases):
+            if _extra_match_score(extra, item) >= MIN_STREAM_MATCH_SCORE:
+                return True
+    search_norm = normalise_text(search)
+    for pattern_extra in EXTRA_PATTERNS:
+        try:
+            if re.search(pattern_extra.get("pattern", ""), search_norm, re.I):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _sort_catalog_channels(catalog):
+    group_order = {
+        "Special Events": 0,
+        "Sports": 1,
+        "BBC": 2,
+        "ITV": 3,
+        "Channel 4 & 5": 4,
+        "Entertainment": 5,
+        "Movies": 6,
+        "News": 7,
+        "Documentary": 8,
+        "Music": 9,
+        "Kids": 10,
+        "Other UK Channels": 50,
+        "US Extras": 80,
+        "Non-UK Extras": 99,
+    }
+    catalog["channels"] = sorted(
+        catalog.get("channels", []),
+        key=lambda item: (group_order.get(item.get("section"), 60), item.get("name", "").lower()),
+    )
+    return catalog
+
+
+def _merge_partial_catalog(base_catalog, partial_catalog, previous_states):
+    by_key = {clean(channel.get("key")): channel for channel in base_catalog.get("channels", []) if clean(channel.get("key"))}
+    for incoming in partial_catalog.get("channels", []):
+        key = clean(incoming.get("key"))
+        if not key:
+            continue
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = copy.deepcopy(incoming)
+            continue
+        existing["streams"] = _unique_sorted_variants(list(existing.get("streams", [])) + list(incoming.get("streams", [])))
+        existing["stream_count"] = len(existing["streams"])
+        if incoming.get("xmltv_id") and not existing.get("xmltv_id"):
+            for field in ("xmltv_id", "xmltv_names", "epg_match_score", "epg_status", "epg_region"):
+                existing[field] = copy.deepcopy(incoming.get(field))
+        if not existing.get("logo"):
+            existing["logo"] = incoming.get("logo", "")
+        if key in previous_states:
+            existing["enabled"] = bool(previous_states[key])
+    base_catalog["channels"] = list(by_key.values())
+    base_catalog.setdefault("dropped", []).extend(partial_catalog.get("dropped", []))
+    return base_catalog
+
+
+
+
+def _refresh_catalog_stats(catalog, raw_streams, usable_streams):
+    channels = catalog.get("channels", [])
+    stats = dict(catalog.get("stats") or {})
+    stats.update({
+        "raw_streams": len(raw_streams),
+        "usable_live_streams": len(usable_streams),
+        "core_channels": len([c for c in channels if c.get("catalog_source") == "core_mapping"]),
+        "auto_uk_channels": len([c for c in channels if c.get("catalog_source") == "auto_uk_epg"]),
+        "auto_uk_no_epg_channels": len([c for c in channels if c.get("catalog_source") in {"auto_uk_no_epg", "auto_no_epg"}]),
+        "auto_us_channels": len([c for c in channels if c.get("catalog_source") == "auto_us_epg"]),
+        "curated_extra_channels": len([c for c in channels if c.get("catalog_source") == "curated_extra"]),
+        "pattern_extra_channels": len([c for c in channels if c.get("catalog_source") == "pattern_extra"]),
+        "dynamic_special_channels": len([c for c in channels if c.get("catalog_source") == "dynamic_special"]),
+        "channels_without_epg": len([c for c in channels if not c.get("xmltv_id")]),
+        "vod_or_non_live_dropped": max(0, len(raw_streams) - len(usable_streams)),
+    })
+    catalog["stats"] = stats
+    return catalog
+
+
+def _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data):
+    if _iptv_ref is None:
+        return []
+    stable_streams = _stable_reference_streams(usable_streams)
+    stable_view = {
+        "channels": [channel for channel in catalog.get("channels", []) if channel.get("catalog_source") != "dynamic_special"]
+    }
+    missing = _iptv_ref.attach_variant_fingerprints(stable_view, stable_streams)
+    catalog["reference_meta"] = _iptv_ref.make_reference_meta(
+        stable_streams,
+        epg_data,
+        raw_count=len(streams),
+        server=normalised_server() if clean(SERVER) else "",
+        username=USERNAME,
+    )
+    catalog["reference_meta"]["dynamic_streams_excluded"] = len(usable_streams) - len(stable_streams)
+    return missing
+
+
+def _build_channel_catalog_delta(streams, epg_data):
+    """Delta-reference catalogue with live Special Events and no-EPG channels."""
+    previous_catalog = _safe_load_catalog_file(CATALOG_FILE)
+    previous_states = _hybrid_enabled_states(previous_catalog)
+    usable_streams = _clean_streams_for_catalog(streams)
+    stable_streams = _stable_reference_streams(usable_streams)
+    dynamic_channels = _build_dynamic_special_events(usable_streams, previous_states)
+
+    fallback_reasons = []
+    if _iptv_ref is not None:
+        account_fp = _iptv_ref.account_fingerprint(normalised_server() if clean(SERVER) else "", USERNAME)
+        incomplete, incomplete_reason = _iptv_ref.suspicious_incomplete(previous_catalog, len(stable_streams), account_fp)
+        if incomplete:
+            raise GeneratorError("%s Existing working IPTV files were kept unchanged. Try again later." % incomplete_reason)
+
+        epg_signatures = _iptv_ref.build_epg_signatures(epg_data)
+        reference_candidates = []
+        migrated_candidate, migration_reason = _migrate_previous_reference_candidate(
+            previous_catalog,
+            stable_streams,
+            epg_data,
+            len(streams),
+        )
+        if migrated_candidate:
+            reference_candidates.append(migrated_candidate)
+        elif migration_reason:
+            fallback_reasons.append(migration_reason)
+        reference_candidates.extend(
+            _hybrid_reference_candidates(previous_catalog, diagnostics=fallback_reasons)
+        )
+
+        for payload in reference_candidates:
+            result = _iptv_ref.try_build_from_reference(
+                payload=payload,
+                usable_streams=stable_streams,
+                current_epg_meta=epg_signatures,
+                previous_enabled_states=previous_states,
+                raw_count=len(streams),
+                server=normalised_server() if clean(SERVER) else "",
+                output_format=OUTPUT_FORMAT,
+                is_potential_catalog_stream=_is_potential_catalog_stream,
+                variant_factory=_hybrid_reference_variant,
+                unique_sort_variants=_unique_sorted_variants,
+                allow_partial=True,
+                max_partial_items=max(300, int(len(stable_streams) * 0.12)),
+            )
+            if not result.get("success"):
+                fallback_reasons.append("%s: %s" % (payload.get("source_name", "reference"), result.get("reason", "not reusable")))
+                continue
+            if not isinstance(result.get("catalog"), dict):
+                fallback_reasons.append("%s: reference helper returned no catalogue" % payload.get("source_name", "reference"))
+                continue
+
+            catalog = result["catalog"]
+            # Dynamic rows in an old local catalogue are never reused; they are
+            # always rebuilt from the current panel response below.
+            catalog["channels"] = [c for c in catalog.get("channels", []) if c.get("catalog_source") != "dynamic_special"]
+            unresolved = result.get("unresolved_items") or []
+            requires_partial = bool(result.get("requires_partial_merge") or unresolved)
+            if requires_partial and not unresolved:
+                fallback_reasons.append("%s: partial merge was requested without input records" % payload.get("source_name", "reference"))
+                continue
+            if unresolved:
+                partial = _build_stable_catalog_subset(unresolved, epg_data, previous_states)
+                catalog = _merge_partial_catalog(catalog, partial, previous_states)
+                catalog["reference_build"]["partial_matched_channels"] = len(partial.get("channels", []))
+                catalog["reference_build"]["partial_input_streams"] = len(unresolved)
+            catalog = _add_no_epg_stable_channels(catalog, stable_streams, previous_states)
+            catalog["channels"].extend(dynamic_channels)
+            catalog = _safe_merge_duplicate_catalog_channels(catalog)
+            catalog = _sort_catalog_channels(catalog)
+            catalog["version"] = 6
+            catalog["mode"] = "grouped_plugin_resolver_delta_reference_special_events"
+            catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+            catalog["category_source"] = CATEGORY_DISCOVERY_SOURCE
+            catalog = _refresh_catalog_stats(catalog, streams, usable_streams)
+            catalog = _attach_selection_history(catalog, previous_states)
+            missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
+            if not missing:
+                return catalog
+            fallback_reasons.append("reference fingerprint refresh was incomplete")
+            break
+    else:
+        fallback_reasons.append("reference helper unavailable")
+
+    # Full fallback still excludes volatile event banks from permanent matching;
+    # Special Events are rebuilt independently from the fresh provider list.
+    catalog = _build_stable_catalog_subset(stable_streams, epg_data, previous_states)
+    catalog["channels"].extend(dynamic_channels)
+    catalog = _safe_merge_duplicate_catalog_channels(catalog)
+    catalog = _sort_catalog_channels(catalog)
+    catalog["version"] = 6
+    catalog["mode"] = "grouped_plugin_resolver_delta_reference_special_events"
+    catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
+    catalog["category_source"] = CATEGORY_DISCOVERY_SOURCE
+    catalog["reference_build"] = {
+        "mode": "full",
+        "source": "full stable-channel matcher",
+        "fallback_reasons": fallback_reasons[-8:],
+        "dynamic_events_built_live": len(dynamic_channels),
+    }
+    catalog = _refresh_catalog_stats(catalog, streams, usable_streams)
+    catalog = _attach_selection_history(catalog, previous_states)
+    missing = _attach_hybrid_reference_meta(catalog, streams, usable_streams, epg_data)
+    if missing:
+        catalog.setdefault("warnings", []).append(
+            "%s selected stable variants could not be fingerprinted; the next run may use full matching." % len(missing)
+        )
+    return catalog
+
+
 def run_generator(reload_pvr=True):
-    """Hybrid/staged generator override."""
+    """Run staged generation with non-fatal provider-category discovery."""
     timings, mark = _new_timing_tracker()
-    stage_dir = Path(IPTV_OUTPUT_DIR) / (".generation_stage_%s_%s" % (_os.getpid(), int(_time.time() * 1000)))
+    stage_dir = Path(IPTV_OUTPUT_DIR) / (".generation_stage_%s_%s" % (os.getpid(), int(time.time() * 1000)))
     final_catalog = Path(CATALOG_FILE)
     final_m3u = Path(OUTPUT_FILE)
     final_epg = Path(OUTPUT_EPG_FILE)
@@ -5159,13 +4421,16 @@ def run_generator(reload_pvr=True):
 
     try:
         maybe_download_live_streams()
-        mark("Download/live stream cache")
+        category_result = maybe_download_live_categories()
+        mark("Download provider streams/categories")
 
         input_path = Path(INPUT_JSON)
         if not input_path.exists():
             raise GeneratorError("Cannot find %s. Download failed." % INPUT_JSON)
         streams = load_and_validate_live_streams(input_path)
-        mark("Load and validate live streams")
+        provider_categories = _load_live_category_map()
+        _annotate_stream_categories(streams, provider_categories)
+        mark("Load/validate streams and categories")
 
         _download_epg_sources()
         mark("Download EPG sources")
@@ -5173,9 +4438,11 @@ def run_generator(reload_pvr=True):
         mark("Load EPG XML sources")
 
         catalog = build_channel_catalog(streams, epg_data)
-        mark("Build channel catalogue")
+        mark("Build/delta-match channel catalogue")
         catalog["optimisation_version"] = HYBRID_OPTIMISATION_VERSION
         catalog["timings"] = timings
+        if category_result.get("warning"):
+            catalog.setdefault("warnings", []).append("Provider categories: %s" % category_result.get("warning"))
 
         staged_catalog = _stage_path(stage_dir, "IPTV-Catalog.json")
         staged_epg = _stage_path(stage_dir, "IPTV-EPG.xml")
@@ -5195,11 +4462,8 @@ def run_generator(reload_pvr=True):
         _write_report_to_path(catalog, filtered_epg_stats, staged_report)
         mark("Stage report")
 
-        validation = _validate_staged_generation(
-            catalog, streams, staged_catalog, staged_m3u, staged_epg
-        )
+        validation = _validate_staged_generation(catalog, streams, staged_catalog, staged_m3u, staged_epg)
         mark("Validate staged output")
-
         _commit_staged_files({
             final_epg: staged_epg,
             Path(CATALOG_EPG_CACHE_FILE): staged_catalog_epg,
@@ -5217,7 +4481,6 @@ def run_generator(reload_pvr=True):
         catalog["timings"] = timings
         _atomic_final_catalog(catalog)
         _atomic_final_report(catalog, filtered_epg_stats)
-
         enabled = _enabled_channels(catalog)
         reference_build = catalog.get("reference_build") or {}
         return {
@@ -5240,8 +4503,606 @@ def run_generator(reload_pvr=True):
             "validation": validation,
         }
     finally:
-        _shutil.rmtree(str(stage_dir), ignore_errors=True)
+        shutil.rmtree(str(stage_dir), ignore_errors=True)
 
+
+# --- Special-event exposure filter ------------------------------------------
+# Event-bank rows are still excluded from stable reference identity, but only
+# explicit PPV/Strong/event products are exposed in Manage Channels. Routine
+# ESPN+/FloSports/BTN+/Peacock schedule banks no longer create thousands of rows.
+
+SPECIAL_EXPOSURE_TERMS = (
+    " ppv ", " pay per view ", " 8k exclusive ", " live event ",
+    " box office event ", " fight night ", " main card ",
+)
+
+
+def _has_meaningful_event_title(item):
+    raw = clean(get_stream_name(item))
+    norm = normalise_text(raw)
+    if not raw or "2098" in raw:
+        return False
+    if _event_status(item) in {"ended", "inactive"}:
+        return False
+    # Empty slot labels such as ':NCAAB 01' or ':Paramount+ 03'.
+    stripped = re.sub(r"(?i)[:\-\s]*(?:PPV\s+EVENT|NCAAB|PARAMOUNT\+|MILB|PEACOCK|ESPN\+|FLSP|BTN\+|STAN)\s*0*\d+[:\-\s]*", "", raw)
+    stripped = re.sub(r"[\s:|\-]+", "", stripped)
+    if len(stripped) < 5:
+        return False
+    return not any(term in norm for term in ("no event streaming", "no event scheduled", "placeholder", "test stream"))
+
+
+def _is_exposed_special_event(item):
+    if not _is_active_dynamic_event(item) or not _has_meaningful_event_title(item):
+        return False
+    raw = clean(get_stream_name(item))
+    norm = " %s " % normalise_text("%s %s" % (raw, _clean_category(item)))
+    family, _slot = _dynamic_event_family_slot(item)
+    if any(term in norm for term in SPECIAL_EXPOSURE_TERMS):
+        return True
+    if family in {"MAX PPV", "Apple TV F1 PPV", "Soccer PPV", "NFHS PPV", "DAZN PPV", "PPV"}:
+        return True
+    # Provider categories explicitly named PPV are eligible, while ordinary
+    # ESPN+/FloSports/Peacock schedule banks stay hidden from Manage Channels.
+    return "ppv" in normalise_text(_clean_category(item))
+
+
+def _special_group_name(item):
+    family, _slot = _dynamic_event_family_slot(item)
+    category = _title_keep_acronyms(_clean_category(item))
+    if family == "MAX PPV":
+        return "Strong 8K / MAX PPV"
+    if family and family != "PPV":
+        return "%s Events" % family
+    if category and "ppv" in normalise_text(category):
+        return category
+    return "PPV Events"
+
+
+def _unique_special_variants(variants, limit=150):
+    unique = {}
+    for variant in variants:
+        stream_id = clean(variant.get("stream_id"))
+        if not stream_id:
+            continue
+        old = unique.get(stream_id)
+        if old is None or int(variant.get("priority_score", 0)) > int(old.get("priority_score", 0)):
+            unique[stream_id] = variant
+    result = list(unique.values())
+    result.sort(key=lambda item: (
+        0 if clean(item.get("event_status")) == "live" else 1,
+        clean(item.get("event_title")).lower(),
+    ))
+    return result[:limit]
+
+
+def _build_dynamic_special_events(streams, previous_states):
+    groups = {}
+    excluded_overflow = 0
+    for item in streams:
+        if not _is_exposed_special_event(item):
+            continue
+        event_title = _clean_event_title(item)
+        if not event_title or event_title.startswith("(2098-"):
+            continue
+        group_name = _special_group_name(item)
+        key_base = compact_text(group_name) or "ppv_events"
+        key = "special_group_%s" % key_base[:60]
+        groups.setdefault(key, {"name": group_name, "items": []})["items"].append((item, event_title))
+
+    channels = []
+    for key, payload in groups.items():
+        variants = []
+        for item, event_title in payload["items"]:
+            variant = _stream_to_variant(
+                item,
+                {"name": payload["name"], "group": "Special Events"},
+                method="dynamic_special_event",
+                match_score="live",
+            )
+            family, slot = _dynamic_event_family_slot(item)
+            variant.update({
+                "display_name": event_title,
+                "event_title": event_title,
+                "event_status": _event_status(item),
+                "event_family": family,
+                "event_slot": slot,
+                "dynamic_event": True,
+            })
+            variants.append(variant)
+        original_count = len(variants)
+        variants = _unique_special_variants(variants)
+        excluded_overflow += max(0, original_count - len(variants))
+        if not variants:
+            continue
+        enabled = previous_states.get(key, True) if key in previous_states else True
+        channel = _make_channel_record(
+            key, payload["name"], "Special Events", variants,
+            xmltv_id="", xmltv_names=[], epg_score="none",
+            enabled=enabled, status="dynamic_no_epg", previous_states=previous_states,
+        )
+        channel.update({
+            "catalog_source": "dynamic_special",
+            "dynamic_event": True,
+            "default_enabled_reason": "active special-event group enabled by default",
+            "event_count": len(variants),
+        })
+        channels.append(channel)
+    channels.sort(key=lambda channel: channel.get("name", "").lower())
+    return channels
+
+
+# --- Duplicate consolidation for no-EPG discoveries -------------------------
+
+
+def _safe_merge_duplicate_catalog_channels(catalog):
+    catalog = _merge_duplicate_catalog_channels_by_epg(catalog)
+    source_rank = {
+        "core_mapping": 1,
+        "auto_uk_epg": 2,
+        "auto_uk_no_epg": 3,
+        "auto_no_epg": 4,
+        "curated_extra": 5,
+        "auto_us_epg": 6,
+        "pattern_extra": 7,
+        "dynamic_special": 8,
+    }
+    merged = []
+    name_merged = 0
+    for channel in catalog.get("channels", []):
+        name_key = compact_text(_strip_quality_words(channel.get("name", "")))
+        if not name_key or len(name_key) < 3 or channel.get("catalog_source") == "dynamic_special":
+            merged.append(copy.deepcopy(channel))
+            continue
+
+        target_index = None
+        incoming_ids = {clean(v.get("stream_id")) for v in channel.get("streams", []) if clean(v.get("stream_id"))}
+        for index, existing in enumerate(merged):
+            if existing.get("catalog_source") == "dynamic_special":
+                continue
+            existing_key = compact_text(_strip_quality_words(existing.get("name", "")))
+            if existing_key != name_key:
+                continue
+            existing_ids = {clean(v.get("stream_id")) for v in existing.get("streams", []) if clean(v.get("stream_id"))}
+            same_broad_region = (
+                existing.get("section") not in {"US Extras", "Non-UK Extras"}
+                and channel.get("section") not in {"US Extras", "Non-UK Extras"}
+            )
+            if same_broad_region or (incoming_ids & existing_ids):
+                target_index = index
+                break
+
+        if target_index is None:
+            merged.append(copy.deepcopy(channel))
+            continue
+
+        existing = merged[target_index]
+        # Prefer a row with XMLTV, then the more authoritative catalogue source.
+        existing_preference = (0 if existing.get("xmltv_id") else 1, source_rank.get(existing.get("catalog_source"), 50))
+        incoming_preference = (0 if channel.get("xmltv_id") else 1, source_rank.get(channel.get("catalog_source"), 50))
+        preferred = copy.deepcopy(channel if incoming_preference < existing_preference else existing)
+        other = existing if incoming_preference < existing_preference else channel
+        preferred["enabled"] = bool(existing.get("enabled") or channel.get("enabled"))
+        preferred["streams"] = _unique_sorted_variants(list(existing.get("streams", [])) + list(channel.get("streams", [])))
+        preferred["stream_count"] = len(preferred["streams"])
+        if not preferred.get("logo"):
+            preferred["logo"] = other.get("logo", "")
+        preferred.setdefault("merged_channel_keys", [])
+        for key in [existing.get("key"), channel.get("key")] + list(existing.get("merged_channel_keys", [])) + list(channel.get("merged_channel_keys", [])):
+            if key and key != preferred.get("key") and key not in preferred["merged_channel_keys"]:
+                preferred["merged_channel_keys"].append(key)
+        merged[target_index] = preferred
+        name_merged += 1
+
+    catalog["channels"] = merged
+    stats = dict(catalog.get("stats") or {})
+    stats["safe_same_name_channels_merged"] = name_merged
+    catalog["stats"] = stats
+    return catalog
+
+
+# --- Targeted partial matcher ------------------------------------------------
+def _build_stable_catalog_subset(streams, epg_data, previous_states):
+    """Match only the supplied changed stable rows without broad core fuzzing."""
+    usable = _clean_streams_for_catalog(streams)
+    exact_buckets = build_exact_provider_buckets(usable)
+    channels = []
+    dropped = []
+    used_provider_epgs = set()
+    uk_epg_channels = _epg_channels_from_data(epg_data, "uk")
+
+    # Core channels are considered only when the changed row still carries one
+    # of that core channel's exact provider EPG IDs. This avoids a lone unknown
+    # stream being fuzzily assigned to an unrelated core channel.
+    for wanted in WANTED_CHANNELS:
+        exact_options = []
+        for epg_id in wanted.get("provider_epg_ids", []):
+            exact_options.extend(exact_buckets.get(clean(epg_id).lower(), []))
+        if not exact_options:
+            continue
+        wanted["epg_region"] = "uk"
+        channel, drop = _build_wanted_group(wanted, exact_options, build_exact_provider_buckets(exact_options), uk_epg_channels, previous_states)
+        if channel:
+            channel = _mark_core_channel(channel)
+            channel["epg_region"] = _region_from_epg_id(channel.get("xmltv_id")) if channel.get("xmltv_id") else "uk"
+            channels.append(channel)
+            used_provider_epgs.update(clean(epg).lower() for epg in wanted.get("provider_epg_ids", []))
+        elif drop:
+            dropped.append(drop)
+
+    auto_channels, auto_dropped = _build_auto_uk_groups(usable, uk_epg_channels, previous_states, used_provider_epgs)
+    channels.extend(_mark_auto_channel(item) for item in auto_channels)
+    dropped.extend(auto_dropped)
+
+    us_channels, us_dropped = _build_auto_us_extra_groups(usable, epg_data, previous_states, used_provider_epgs)
+    channels.extend(us_channels)
+    dropped.extend(us_dropped)
+
+    channels.extend(_build_extra_groups_with_epg(EXTRA_CHANNELS, usable, epg_data, previous_states))
+    channels.extend(_build_pattern_extra_groups(EXTRA_PATTERNS, usable, previous_states))
+
+    catalog = {
+        "version": 6,
+        "mode": "delta_subset",
+        "server": normalised_server() if clean(SERVER) else "",
+        "output_format": OUTPUT_FORMAT,
+        "channels": channels,
+        "dropped": dropped,
+        "stats": {"raw_streams": len(streams), "usable_live_streams": len(usable)},
+    }
+    catalog = _add_no_epg_stable_channels(catalog, usable, previous_states)
+    catalog = _safe_merge_duplicate_catalog_channels(catalog)
+    return _sort_catalog_channels(catalog)
+
+
+
+# ============================================================================
+# CHANNEL SELECTION POLICY AND VIRTUAL MENU GROUPS
+# Focused UK Common defaults, simplified browse groups and hidden movies.
+# ============================================================================
+
+IPTV_SELECTION_POLICY_VERSION = 4
+
+# UK Common intentionally combines the established popular UK sports set with
+# only the most frequently used terrestrial/news channels.  Other BBC, ITV and
+# Channel 4/5 family services remain available under Other UK Channels.
+POPULAR_UK_SPORTS_KEYS = frozenset(
+    item.get("key") for item in WANTED_CHANNELS
+    if item.get("key") and item.get("enabled_default") is True
+    and clean(item.get("group")) == "Sports"
+)
+UK_COMMON_BROADCASTER_KEYS = frozenset({
+    "bbc_one", "bbc_two", "uk_bbcnews",
+    "itv1", "itv2", "itv3",
+    "channel_4", "channel_5",
+})
+CORE_COMMON_UK_KEYS = frozenset(
+    set(POPULAR_UK_SPORTS_KEYS) | set(UK_COMMON_BROADCASTER_KEYS)
+)
+# Compatibility aliases for external code/tests that imported older names.
+COMMON_UK_KEYS = CORE_COMMON_UK_KEYS
+
+UK_COMMON_XMLTV_IDS = frozenset({
+    "bbconelonhduk", "bbctwohduk", "bbcnewshduk",
+    "itv1hduk", "itv2hduk", "itv3hduk",
+    "channel4hduk", "channel5hduk", "channel5uk",
+})
+UK_COMMON_PROVIDER_EPG_IDS = frozenset({
+    "bbc1uk", "bbc2uk", "bbcnewsuk",
+    "itv1uk", "itv2uk", "itv3uk",
+    "channel4uk", "channel5uk",
+})
+UK_COMMON_EXACT_NAMES = frozenset({
+    "bbc 1", "bbc one", "bbc 2", "bbc two", "bbc news",
+    "itv1", "itv 1", "itv2", "itv 2", "itv3", "itv 3",
+    "channel 4", "channel 5",
+})
+
+# A compact popular North-American sports group.  These remain disabled by
+# default; the group exists only to make them easy to find and select.
+USA_COMMON_KEYS = frozenset({
+    "dazn_1", "uk_dazn1", "dazn_2", "dazn_3", "dazn_4",
+    "us_espn", "espn_2", "us_espnnews",
+    "us_foxsports1", "us_foxsports2", "us_cbssportsnetwork",
+    "us_accnetwork", "us_secnetwork", "us_golfchannel",
+    "us_tennischannel", "nba_tv", "nfl_network", "nfl_redzone",
+    "nhl_network", "mlb_network", "wwe_network",
+})
+
+MENU_SECTION_LABELS = {
+    "BBC": "Other UK Channels",
+    "ITV": "Other UK Channels",
+    "Channel 4 & 5": "Other UK Channels",
+    "US Extras": "Other USA Channels",
+    "USA Channels": "Other USA Channels",
+    "Non-UK Extras": "Other USA Channels",
+    "Other Extras": "Other USA Channels",
+}
+
+# These are intentionally unavailable in Manage Channels and can never be
+# written to the active M3U.  Entertainment channels that happened to be
+# classified under the old Movies section are reclassified instead of hidden.
+NON_MOVIE_LEGACY_MOVIES_KEYS = frozenset({
+    "uk_skycomedy", "uk_skycrime", "uk_skymax", "uk_noepg_skyone",
+})
+
+MOVIE_CHANNEL_PATTERNS = (
+    r"\bsky\s+cinema\b",
+    r"\bfilm\s*4\b",
+    r"\btalking\s+pictures\b",
+    r"\bmovie(?:s)?\b",
+    r"\bcinema\b",
+    r"\btcm\b",
+    r"\bsky\s+action\b",
+)
+
+
+def _identity_token(value):
+    return re.sub(r"[^a-z0-9]+", "", clean(value).lower())
+
+
+def _is_movie_channel(channel):
+    if not isinstance(channel, dict):
+        return False
+    values = [
+        clean(channel.get("key")), clean(channel.get("name")),
+        clean(channel.get("xmltv_id")),
+    ]
+    for stream in (channel.get("streams") or [])[:20]:
+        values.extend((
+            clean(stream.get("name")), clean(stream.get("display_name")),
+            clean(stream.get("provider_epg")),
+        ))
+    key = clean(channel.get("key"))
+    section = clean(channel.get("section"))
+    if section == "Movies" and key not in NON_MOVIE_LEGACY_MOVIES_KEYS:
+        return True
+    text = normalise_text(" ".join(value for value in values if value))
+    return any(re.search(pattern, text, flags=re.I) for pattern in MOVIE_CHANNEL_PATTERNS)
+
+
+def _normalise_catalogue_section(channel):
+    """Undo broad legacy sections and keep menu grouping independent."""
+    section = clean(channel.get("section")) or "Other UK Channels"
+    if section == "Movies" and not _is_movie_channel(channel):
+        section = "Other UK Channels"
+        channel["section"] = section
+    return section
+
+
+def _is_uk_common_broadcaster(channel):
+    key = clean(channel.get("key"))
+    if key in UK_COMMON_BROADCASTER_KEYS:
+        return True
+
+    if _identity_token(channel.get("xmltv_id")) in UK_COMMON_XMLTV_IDS:
+        return True
+
+    for stream in (channel.get("streams") or [])[:40]:
+        if _identity_token(stream.get("provider_epg")) in UK_COMMON_PROVIDER_EPG_IDS:
+            return True
+
+    name = normalise_text(clean(channel.get("name"))).lower()
+    name = re.sub(r"\b(?:hd|fhd|uhd|4k|8k|raw|hevc)\b", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name in UK_COMMON_EXACT_NAMES
+
+
+def _is_common_uk_channel(channel):
+    if not isinstance(channel, dict) or _is_movie_channel(channel):
+        return False
+    if channel.get("dynamic_event") or clean(channel.get("section")) == "Special Events":
+        return False
+    key = clean(channel.get("key"))
+    return key in POPULAR_UK_SPORTS_KEYS or _is_uk_common_broadcaster(channel)
+
+
+def _is_uk_broadcaster_family(channel):
+    if not isinstance(channel, dict) or _is_movie_channel(channel):
+        return False
+    section = clean(channel.get("section"))
+    if section in ("BBC", "ITV", "Channel 4 & 5"):
+        return True
+    key = clean(channel.get("key")).lower()
+    if re.match(r"^(?:bbc|uk_bbc|itv|uk_itv|citv|uk_citv)", key):
+        return True
+    if key in {
+        "channel_4", "channel_5", "uk_4seven", "uk_e4", "uk_more4",
+        "uk_5star", "uk_5usa", "uk_5select", "uk_5action",
+    }:
+        return True
+    name = normalise_text(clean(channel.get("name"))).lower()
+    return bool(re.match(
+        r"^(?:bbc\b|itv\b|citv\b|channel\s+[45]\b|e4\b|more4\b|4seven\b|5star\b|5usa\b|5select\b|5action\b)",
+        name,
+    ))
+
+
+def _menu_groups_for_channel(channel):
+    if _is_movie_channel(channel):
+        return []
+    key = clean(channel.get("key"))
+    section = _normalise_catalogue_section(channel)
+    section_group = MENU_SECTION_LABELS.get(section, section)
+    common_us = key in USA_COMMON_KEYS
+    groups = []
+    if _is_common_uk_channel(channel):
+        groups.append("UK Common")
+    if common_us:
+        groups.append("USA Common")
+
+    # Other USA Channels is deliberately exclusive of USA Common.  This keeps
+    # DAZN 2 and other popular US rows from appearing in two adjacent US groups.
+    if not (common_us and section_group == "Other USA Channels"):
+        groups.append(section_group)
+    if _is_uk_broadcaster_family(channel) and "Other UK Channels" not in groups:
+        groups.append("Other UK Channels")
+
+    output = []
+    for group in groups:
+        if group and group not in ("Movies", "Other Extras", "USA Channels") and group not in output:
+            output.append(group)
+    return output
+
+
+def _catalog_selection_states(catalog):
+    if not isinstance(catalog, dict):
+        return {}
+    try:
+        policy_version = int(catalog.get("selection_policy_version") or 0)
+    except (TypeError, ValueError, OverflowError):
+        policy_version = 0
+    if policy_version != IPTV_SELECTION_POLICY_VERSION:
+        return {}
+    states = {
+        clean(key): bool(value)
+        for key, value in (catalog.get("selection_history") or {}).items()
+        if clean(key)
+    }
+    for channel in catalog.get("channels", []):
+        key = clean(channel.get("key"))
+        if key and not _is_movie_channel(channel):
+            states[key] = bool(channel.get("enabled"))
+    return states
+
+
+def _decorate_catalog_v9(catalog, previous_catalog=None):
+    """Apply the focused UK Common defaults and simplified virtual groups.
+
+    Policy v4 migrates older catalogues once.  Only popular UK sports plus BBC
+    One, BBC Two, BBC News, ITV1-3, Channel 4 and Channel 5 start selected.
+    Other broadcaster-family channels remain selectable under Other UK
+    Channels.  Movie channels remain forced off and hidden.  Once a v4
+    selection is saved, explicit user choices are preserved across generation.
+    """
+    if not isinstance(catalog, dict):
+        return catalog
+
+    previous_states = _catalog_selection_states(previous_catalog)
+    try:
+        previous_policy = int((previous_catalog or {}).get("selection_policy_version") or 0)
+    except (TypeError, ValueError, OverflowError):
+        previous_policy = 0
+    migrated = bool(previous_catalog) and previous_policy != IPTV_SELECTION_POLICY_VERSION
+
+    group_counts = {}
+    group_enabled_counts = {}
+    selectable_count = 0
+    movie_hidden_count = 0
+    common_count = 0
+
+    for channel in catalog.get("channels", []):
+        key = clean(channel.get("key"))
+        movie_hidden = _is_movie_channel(channel)
+        channel["movie_channel"] = bool(movie_hidden)
+        channel["user_selectable"] = not movie_hidden
+
+        if movie_hidden:
+            movie_hidden_count += 1
+            channel["enabled"] = False
+            channel["menu_groups"] = []
+            channel["common_uk"] = False
+            channel["common_us"] = False
+            channel["default_enabled_reason"] = "movie channel excluded from Live TV selection"
+            channel["selection_excluded_reason"] = "movie_channel"
+            continue
+
+        selectable_count += 1
+        groups = _menu_groups_for_channel(channel)
+        common_uk = _is_common_uk_channel(channel)
+        channel["menu_groups"] = groups
+        channel["common_uk"] = common_uk
+        channel["common_us"] = key in USA_COMMON_KEYS
+        channel.pop("selection_excluded_reason", None)
+        if common_uk:
+            common_count += 1
+
+        if key in previous_states:
+            enabled = previous_states[key]
+        else:
+            enabled = common_uk
+        channel["enabled"] = bool(enabled)
+        if common_uk:
+            channel["default_enabled_reason"] = "UK Common channel"
+        elif channel.get("xmltv_id"):
+            channel["default_enabled_reason"] = "available; disabled until selected"
+        else:
+            channel["default_enabled_reason"] = "available without EPG; disabled until selected"
+
+        for group in groups:
+            group_counts[group] = group_counts.get(group, 0) + 1
+            if channel["enabled"]:
+                group_enabled_counts[group] = group_enabled_counts.get(group, 0) + 1
+
+    catalog["selection_policy_version"] = IPTV_SELECTION_POLICY_VERSION
+    catalog["menu_group_version"] = 3
+    catalog["menu_groups"] = [
+        {
+            "name": name,
+            "channel_count": group_counts.get(name, 0),
+            "enabled_count": group_enabled_counts.get(name, 0),
+        }
+        for name in (
+            "UK Common", "USA Common", "Sports", "News",
+            "Documentary", "Kids", "Music", "Other UK Channels",
+            "Special Events", "Other USA Channels",
+        )
+        if group_counts.get(name, 0)
+    ]
+    stats = dict(catalog.get("stats") or {})
+    stats["menu_groups"] = len(catalog.get("menu_groups", []))
+    stats["default_common_channels"] = common_count
+    stats["selectable_channels"] = selectable_count
+    stats["movie_channels_hidden"] = movie_hidden_count
+    stats["enabled_channels"] = len([
+        channel for channel in catalog.get("channels", []) if channel.get("enabled")
+    ])
+    catalog["stats"] = stats
+    if migrated:
+        catalog["selection_policy_migration"] = (
+            "older defaults reset once to focused UK Common; broadcaster groups "
+            "moved to Other UK Channels; US groups simplified"
+        )
+    catalog = _attach_selection_history(catalog, previous_states)
+    return catalog
+
+
+# grouping remains outside the reference matcher, so changing browse groups or
+# Common membership does not require rebuilding the bundled reference.
+
+
+def build_channel_catalog(streams, epg_data):
+    previous_catalog = _safe_load_catalog_file(CATALOG_FILE)
+    catalog = _build_channel_catalog_delta(streams, epg_data)
+    catalog = _decorate_catalog_v9(catalog, previous_catalog=previous_catalog)
+    catalog["version"] = 9
+    catalog["mode"] = "grouped_plugin_resolver_delta_reference_special_events_grouped_ui_v9"
+    return catalog
+
+
+
+
+def load_catalog():
+    catalog = _load_catalog_raw()
+    # The manager can apply the policy immediately to an older catalogue before
+    # Generate / Refresh is run.  It is persisted on Save or the next success.
+    return _decorate_catalog_v9(catalog, previous_catalog=catalog)
+
+
+def update_catalog_enabled_states(enabled_keys):
+    catalog = load_catalog()
+    enabled_keys = set(clean(item) for item in enabled_keys if clean(item))
+    for item in catalog.get("channels", []):
+        item["enabled"] = (
+            bool(item.get("user_selectable", True))
+            and not _is_movie_channel(item)
+            and clean(item.get("key")) in enabled_keys
+        )
+    catalog["selection_policy_version"] = IPTV_SELECTION_POLICY_VERSION
+    catalog["selection_policy_migration"] = "user selection saved"
+    catalog = _attach_selection_history(catalog, _hybrid_enabled_states(catalog))
+    # Rebuild and validate the catalogue, M3U and EPG together before saving.
+    return rebuild_from_catalog(reload_pvr=True, catalog_override=catalog)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

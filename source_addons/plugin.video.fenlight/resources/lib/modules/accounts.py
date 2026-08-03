@@ -715,32 +715,53 @@ def _catalog_channel_label(channel):
 
 
 def manage_iptv_channels(params=None):
-    """Open a popup where channels can be ticked/unticked, then rebuild once on OK."""
+    """Live-filtering multi-select channel manager with a safe Kodi fallback."""
     try:
         import xbmcgui
         from modules import iptv_generator
 
         catalog = iptv_generator.load_catalog()
-        channels = catalog.get('channels', [])
+        channels = [
+            item for item in catalog.get('channels', [])
+            if item.get('user_selectable', True)
+            and not iptv_generator._is_movie_channel(item)
+        ]
         if not channels:
             return k.ok_dialog(
                 heading='Manage Live TV Channels',
                 text='No channel catalogue was found.[CR][CR]Run Generate / Refresh Live TV first.'
             )
 
-        labels = [_catalog_channel_label(item) for item in channels]
-        preselect = [index for index, item in enumerate(channels) if item.get('enabled')]
+        selected_keys = None
+        try:
+            from windows.iptv_channels import IPTVChannelManager
+            manager = IPTVChannelManager(
+                'iptv_channel_manager.xml',
+                k.addon_path(),
+                channels=channels
+            )
+            selected_keys = manager.run()
+            del manager
+        except Exception as custom_error:
+            # Keep the original static selector as an emergency fallback for an
+            # unusual Kodi build/skin where the custom XML cannot be opened.
+            try:
+                k.logger('IPTV custom channel manager fallback', str(custom_error))
+            except Exception:
+                pass
+            labels = [_catalog_channel_label(item) for item in channels]
+            preselect = [index for index, item in enumerate(channels) if item.get('enabled')]
+            selected = xbmcgui.Dialog().multiselect(
+                'Manage Live TV Channels', labels, preselect=preselect
+            )
+            if selected is not None:
+                selected_keys = [
+                    channels[index].get('key') for index in selected
+                    if 0 <= index < len(channels)
+                ]
 
-        selected = xbmcgui.Dialog().multiselect(
-            'Manage Live TV Channels',
-            labels,
-            preselect=preselect
-        )
-
-        if selected is None:
+        if selected_keys is None:
             return
-
-        selected_keys = [channels[index].get('key') for index in selected if 0 <= index < len(channels)]
 
         progress = _iptv_progress_dialog('Manage Live TV Channels')
         try:
@@ -778,7 +799,6 @@ def manage_iptv_channels(params=None):
             heading='Manage Live TV Channels',
             text='Could not open the channel manager:[CR][CR]%s' % str(exc)
         )
-
 
 def rebuild_iptv_files(params=None):
     """Rebuild IPTV.m3u and IPTV-EPG.xml from the existing catalogue without redownloading provider JSON."""
