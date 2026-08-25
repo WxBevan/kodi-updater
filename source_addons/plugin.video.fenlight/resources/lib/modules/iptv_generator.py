@@ -3629,7 +3629,7 @@ def _validate_staged_generation(catalog, streams, catalog_path, m3u_path, epg_pa
     }
 
 
-def _commit_staged_files(stage_map):
+""" def _commit_staged_files(stage_map):
     backup_dir = Path(IPTV_OUTPUT_DIR) / ".generation_backup"
     if backup_dir.exists():
         shutil.rmtree(str(backup_dir), ignore_errors=True)
@@ -3640,7 +3640,7 @@ def _commit_staged_files(stage_map):
             final_path = Path(final_path)
             if final_path.exists():
                 backup = backup_dir / final_path.name
-                shutil.copy2(str(final_path), str(backup))
+                shutil.copyfile(str(final_path), str(backup))
                 backups[final_path] = backup
 
         for final_path, staged_path in stage_map.items():
@@ -3654,12 +3654,65 @@ def _commit_staged_files(stage_map):
             backup = backups.get(final_path)
             try:
                 if backup and backup.exists():
-                    shutil.copy2(str(backup), str(final_path))
+                    shutil.copyfile(str(backup), str(final_path))
                 elif final_path.exists() and final_path not in backups:
                     final_path.unlink()
             except Exception:
                 pass
         raise
+    finally:
+        shutil.rmtree(str(backup_dir), ignore_errors=True) """
+
+def _commit_staged_files(stage_map):
+    backup_dir = Path(IPTV_OUTPUT_DIR) / ".generation_backup"
+
+    if backup_dir.exists():
+        shutil.rmtree(str(backup_dir), ignore_errors=True)
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    backups = {}
+    replaced = set()
+
+    try:
+        # Backup existing working files.
+        # Copy CONTENTS only - Android emulated storage can reject xattrs.
+        for final_path in stage_map:
+            final_path = Path(final_path)
+
+            if final_path.exists():
+                backup = backup_dir / final_path.name
+                shutil.copyfile(str(final_path), str(backup))
+                backups[final_path] = backup
+
+        # Commit validated staged files.
+        for final_path, staged_path in stage_map.items():
+            final_path = Path(final_path)
+            staged_path = Path(staged_path)
+
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            staged_path.replace(final_path)
+
+            replaced.add(final_path)
+
+    except BaseException:
+        # Only roll back files that were ACTUALLY replaced.
+        for final_path in reversed(list(stage_map.keys())):
+            final_path = Path(final_path)
+            backup = backups.get(final_path)
+
+            try:
+                if backup and backup.exists():
+                    shutil.copyfile(str(backup), str(final_path))
+
+                elif final_path in replaced and final_path.exists():
+                    final_path.unlink()
+
+            except Exception:
+                pass
+
+        raise
+
     finally:
         shutil.rmtree(str(backup_dir), ignore_errors=True)
 
