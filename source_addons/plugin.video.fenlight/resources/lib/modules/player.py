@@ -25,7 +25,9 @@ class FenLightPlayer(xbmc.Player):
 		self.play(self.url, self.make_listing())
 		if not self.is_generic:
 			self.check_playback_start()
-			if self.playback_successful: self.monitor()
+			if self.playback_successful:
+				self.start_segment_watcher()
+				self.monitor()
 			else:
 				self.sources_object.playback_successful = self.playback_successful
 				self.sources_object.cancel_all_playback = self.cancel_all_playback
@@ -58,6 +60,7 @@ class FenLightPlayer(xbmc.Player):
 		self.kill_dialog()
 		ku.sleep(200)
 		ku.close_all_dialog()
+		self.dialogs_cleared = True
 
 	def monitor(self):
 		try:
@@ -208,15 +211,35 @@ class FenLightPlayer(xbmc.Player):
 	def info_next_ep(self):
 		self.nextep_info_gathered = True
 		try:
-			play_type = 'autoplay_nextep' if self.autoplay_nextep else 'autoscrape_nextep'
+			play_type = 'autoplay_nextep' if st.auto_play('episode') else 'autoscrape_nextep'
 			nextep_settings = st.auto_nextep_settings(play_type)
 			final_chapter = self.final_chapter(90) if nextep_settings['use_chapters'] else None
 			percentage = 100 - final_chapter if final_chapter else nextep_settings['window_percentage']
 			window_time = round((percentage/100) * self.total_time)
+			# For the interactive Next Episode workflow, prefer a real outro/credits timestamp when available.
+			if self.outro_start is not None and st.next_episode_use_outro_timing():
+				window_time = self._next_episode_outro_window_time(self.outro_start, self.total_time)
 			use_window = nextep_settings['alert_method'] == 0
 			default_action = nextep_settings['default_action']
 			self.start_prep = nextep_settings['scraper_time'] + window_time
 			self.nextep_settings = {'use_window': use_window, 'window_time': window_time, 'default_action': default_action, 'play_type': play_type}
+		except: pass
+
+	def _next_episode_outro_window_time(self, outro_start, total_time=None):
+		try:
+			total_time = float(total_time or self.total_time or self.getTotalTime())
+			lead = max(0, st.next_episode_outro_lead())
+			prompt_at = max(0.0, float(outro_start) - lead)
+			return max(1, min(round(total_time), round(total_time - prompt_at)))
+		except: return 1
+
+	def _apply_outro_next_episode_timing(self, outro_start, total_time):
+		try:
+			self.outro_start = float(outro_start)
+			if not self.nextep_info_gathered or not hasattr(self, 'nextep_settings'): return
+			window_time = self._next_episode_outro_window_time(self.outro_start, total_time)
+			self.nextep_settings['window_time'] = window_time
+			self.start_prep = st.auto_nextep_settings(self.nextep_settings.get('play_type', 'autoplay_nextep'))['scraper_time'] + window_time
 		except: pass
 
 	def final_chapter(self, threshhold):
@@ -225,6 +248,87 @@ class FenLightPlayer(xbmc.Player):
 			if final_chapter >= threshhold: return final_chapter
 		except: pass
 		return None
+
+	def _next_episode_feature_active(self):
+		try:
+			obj = self.sources_object
+			if any((obj.random_continual, obj.random, obj.disable_autoplay_next_episode)): return False
+			return bool(obj.autoplay_nextep)
+		except: return False
+
+	def start_segment_watcher(self):
+		try:
+			if self.is_generic or self.media_type != 'episode': return
+			skip_settings = st.skip_segment_settings()
+			use_outro_timing = self._next_episode_feature_active() and st.next_episode_use_outro_timing()
+			if not skip_settings and not use_outro_timing: return
+			Thread(target=self._segment_watcher, args=(skip_settings, use_outro_timing)).start()
+		except: pass
+
+	def _segment_watcher(self, skip_settings, use_outro_timing):
+		try:
+			if not (self.tmdb_id or self.imdb_id): return
+			fetch_kinds = set(skip_settings['kinds']) if skip_settings else set()
+			if use_outro_timing: fetch_kinds.add('outro')
+			if not fetch_kinds: return
+			from apis import skip_intro
+
+			# TheIntroDB can match the exact release using duration_ms, so wait until Kodi knows the runtime.
+			total_time = 0
+			while self.isPlayingVideo() and not total_time:
+				try: total_time = self.getTotalTime()
+				except: total_time = 0
+				if not total_time: ku.sleep(500)
+			if not total_time: return
+
+			windows = skip_intro.get_skip_windows(self.tmdb_id, self.imdb_id, self.season, self.episode, total_time, fetch_kinds)
+			if not windows: return
+
+			if use_outro_timing:
+				outro = next((item for item in windows if item['kind'] == 'outro'), None)
+				if outro: self._apply_outro_next_episode_timing(outro['start'], total_time)
+
+			if not skip_settings: return
+			visible_kinds = set(skip_settings['kinds'])
+			# The Next Episode window owns the end-of-episode UI when enabled, so do not stack a Skip Outro dialog on top of it.
+			if self._next_episode_feature_active(): visible_kinds.discard('outro')
+			windows = [item for item in windows if item['kind'] in visible_kinds]
+			if not windows: return
+
+			waited = 0
+			while self.isPlayingVideo() and not self.dialogs_cleared and waited < 15000:
+				ku.sleep(250)
+				waited += 250
+
+			handled = set()
+			while self.isPlayingVideo():
+				try: curr_time = self.getTime()
+				except:
+					ku.sleep(500)
+					continue
+				for window in windows:
+					if window['kind'] in handled: continue
+					if curr_time >= window['end']:
+						handled.add(window['kind'])
+						continue
+					if curr_time >= window['start']:
+						handled.add(window['kind'])
+						self._do_skip(window, skip_settings['dismiss'])
+						break
+				if len(handled) >= len(windows): return
+				ku.sleep(500)
+		except: pass
+
+	def _do_skip(self, window, dismiss):
+		try:
+			from windows.base_window import open_window
+			current_time = self.getTime()
+			remaining = max(1, min(int(dismiss), int(max(window['end'] - current_time, 1))))
+			choice = open_window(('windows.skip_intro', 'SkipIntro'), 'skip_intro.xml', kind=window['kind'], seconds=remaining, meta=self.meta)
+			if choice != 'skip' or not self.isPlayingVideo(): return
+			# Never seek backwards if the segment ended while the dialog was open.
+			if self.getTime() < window['end']: self.seekTime(window['end'])
+		except: pass
 
 	def kill_dialog(self):
 		try: self.sources_object._kill_progress_dialog()
@@ -239,7 +343,9 @@ class FenLightPlayer(xbmc.Player):
 			self.meta_get, self.kodi_monitor, self.playback_percent = self.meta.get, ku.kodi_monitor(), self.sources_object.playback_percent or 0.0
 			self.playing_filename = self.sources_object.playing_filename
 			self.media_marked, self.nextep_info_gathered, self.movie_stingers_run = False, False, False
+			self.dialogs_cleared, self.outro_start = False, None
 			self.current_point = float(self.playback_percent or 0.0)
+			self.total_time, self.curr_time = 0, 0
 			self.playback_successful, self.cancel_all_playback = None, False
 			self.playing_item = self.sources_object.playing_item
 

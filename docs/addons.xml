@@ -893,6 +893,8 @@ fix for fanarttv landscape art overwriting TMDb landscape art
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.pil" version="1.1.7" />
         <import addon="script.module.requests" version="2.19.1" />
+        <import addon="script.module.magneto" version="6.07.04" />
+
         <import addon="script.module.cocoscrapers" version="1.0.0" />
     </requires>
 
@@ -1310,6 +1312,8 @@ fix for fanarttv landscape art overwriting TMDb landscape art
         <import addon="plugin.video.tmdb.bingie.helper" version="1.0.2" />
         <import addon="plugin.program.autocompletion" version="2.1.3" />
         <import addon="script.module.cocoscrapers" version="1.0.39" />
+        <import addon="script.module.magneto" version="6.07.04" />
+
         <import addon="script.module.jurialmunkey" version="0.2.35" />
         <import addon="pvr.iptvsimple" version="0.0.0" />
         <import addon="plugin.program.autowidget" version="3.7.0" />
@@ -1522,6 +1526,25 @@ fix for fanarttv landscape art overwriting TMDb landscape art
       <icon>icon.png</icon>
     </assets>
   </extension>
+</addon>
+
+<addon id="script.module.magneto" version="6.07.04" name="Magneto Module" provider-name="Magneto">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0" />
+		<import addon="script.module.requests" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="lib/router.py">
+		<provides>executable video</provides>
+	</extension>
+	<extension point="xbmc.service" library="lib/service.py" />
+	<extension point="xbmc.python.module" library="lib" />
+	<extension point="xbmc.addon.metadata">
+		<license>GNU GENERAL PUBLIC LICENSE. Version 3, 29 June 2007</license>
+		<summary>Magneto Module</summary>
+		<description>A module to query magnet providers.[CR][CR]This is a Non-profit resource, organized solely for educational purposes which is protected under the Fair-Use doctrine of the Copyright Act, Specifically section 107, which does promote freedom of expression, by permitting the unlicensed use of copyright-protected works.</description>
+		<disclaimer>The author does not host or own any content found within this addon. The author is not responsible for the content found using this addon. The author is not responsible for the use of this addon.</disclaimer>
+		<assets><icon>resources/magneto.png</icon></assets>
+	</extension>
 </addon>
 
 <addon id="script.module.qrcode" name="qrcode" version="6.1.0+matrix.3" provider-name="Lincoln Loop">

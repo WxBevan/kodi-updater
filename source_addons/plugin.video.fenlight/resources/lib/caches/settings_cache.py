@@ -136,7 +136,8 @@ def set_default(setting_ids):
 def set_boolean(params):
 	boolean_dict = {'true': 'false', 'false': 'true'}
 	setting = params['setting_id']
-	set_setting(setting, boolean_dict[get_setting('fenlight.%s' % setting)])
+	new_value = boolean_dict[get_setting('fenlight.%s' % setting)]
+	set_setting(setting, new_value)
 
 def set_string(params):
 	current_value = get_setting('fenlight.%s' % params['setting_id'])
@@ -544,12 +545,20 @@ def default_settings():
 {'setting_id': 'autoplay_next_episode', 'setting_type': 'boolean', 'setting_default': 'true'},
 {'setting_id': 'autoplay_alert_method', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Window', '1': 'Notification'}},
 {'setting_id': 'autoplay_default_action', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Play', '1': 'Cancel', '2': 'Pause & Wait'}},
+{'setting_id': 'next_episode_use_outro_timing', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'next_episode_outro_lead', 'setting_type': 'action', 'setting_default': '10', 'min_value': '0', 'max_value': '60'},
 {'setting_id': 'autoplay_next_window_percentage', 'setting_type': 'action', 'setting_default': '95', 'min_value': '75', 'max_value': '99'},
 {'setting_id': 'autoplay_use_chapters', 'setting_type': 'boolean', 'setting_default': 'true'},
 {'setting_id': 'autoscrape_next_episode', 'setting_type': 'boolean', 'setting_default': 'false'},
 {'setting_id': 'autoscrape_next_window_percentage', 'setting_type': 'action', 'setting_default': '95', 'min_value': '75', 'max_value': '99'},
 {'setting_id': 'autoscrape_use_chapters', 'setting_type': 'boolean', 'setting_default': 'true'},
 {'setting_id': 'auto_resume_episode', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Never', '1': 'Always', '2': 'Autoplay Only'}},
+#==================== Skip Segments
+{'setting_id': 'skip_segments', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'skip_intros', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'skip_recaps', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'skip_outros', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'skip_segments_dismiss', 'setting_type': 'action', 'setting_default': '8', 'min_value': '3', 'max_value': '30'},
 #==================== Playback Utilities
 {'setting_id': 'playback.limit_resolve', 'setting_type': 'boolean', 'setting_default': 'false'},
 {'setting_id': 'easynews.playback_method', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'None', '1': 'Retry', '2': 'No Seek', '3': 'Both'}},

@@ -26,6 +26,8 @@ class MainCache(BaseCache):
 		try:
 			dbcon = self.manual_connect('maincache_db')
 			dbcon.execute('DELETE from maincache WHERE CAST(expires AS INT) <= ?', (get_timestamp(),))
+			from caches.skip_cache import skip_cache
+			skip_cache.clean_database()
 			dbcon.execute('VACUUM')
 			return True
 		except: return False

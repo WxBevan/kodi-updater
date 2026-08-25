@@ -646,7 +646,7 @@ class Sources():
 		return self.progress_dialog.resume_choice
 
 	def _make_nextep_dialog(self, default_action='cancel'):
-		try: action = open_window(('windows.playback_notifications', 'NextEpisode'), 'playback_notifications.xml', meta=self.meta, default_action=default_action)
+		try: action = open_window(('windows.playback_notifications', 'NextEpisode'), 'next_episode.xml', meta=self.meta, default_action=default_action)
 		except: action = 'cancel'
 		return action
 
@@ -838,16 +838,46 @@ class Sources():
 		else: return False
 
 	def autoscrape_nextep_handler(self):
+		"""Prepare next-episode sources in the background, then use the normal Next Episode prompt.
+
+		When Episode Auto Play is OFF, choosing Play opens the standard source-results window instead
+		of silently resolving a source. Cancel leaves the current episode untouched.
+		"""
+		if not self.nextep_settings: return False
 		player = kodi_utils.kodi_player()
-		if player.isPlayingVideo():
-			results = self.get_sources()
-			if not results: return kodi_utils.notification(33092, 3000)
-			else:
-				kodi_utils.notification('[B]Next Episode Ready:[/B] %s S%02dE%02d' \
-						% (self.meta.get('title'), self.meta.get('season'), self.meta.get('episode')), 6500, self.meta.get('poster'))
-				while player.isPlayingVideo(): kodi_utils.sleep(100)
-			self.display_results(results)
-		else: return
+		if not player.isPlayingVideo(): return False
+		results = self.get_sources()
+		if not results: return kodi_utils.notification(33092, 3000)
+		total_time = player.getTotalTime()
+		use_window = self.nextep_settings.get('use_window', True)
+		window_time = self.nextep_settings.get('window_time', 1)
+		default_action = self.nextep_settings.get('default_action', 'play')
+		action, continue_nextep = None, False
+		while player.isPlayingVideo():
+			try:
+				if round(total_time - player.getTime()) <= window_time:
+					continue_nextep = True
+					break
+				kodi_utils.sleep(100)
+			except: pass
+		if not continue_nextep: return False
+		if use_window:
+			action = self._make_nextep_dialog(default_action=default_action)
+		else:
+			kodi_utils.notification('[B]Next Episode Ready:[/B] %s S%02dE%02d' %
+				(self.meta.get('title'), self.meta.get('season'), self.meta.get('episode')), 6500, self.meta.get('poster'))
+			while player.isPlayingVideo(): kodi_utils.sleep(100)
+			action = 'play'
+		if not action: action = default_action
+		if action == 'cancel': return False
+		if action == 'pause':
+			player.stop()
+			return False
+		if action == 'play':
+			player.stop()
+			while player.isPlayingVideo(): kodi_utils.sleep(100)
+			return self.display_results(results)
+		return False
 
 	def debrid_importer(self, debrid_provider):
 		return manual_function_import(*self.debrids[debrid_provider])

@@ -7,7 +7,7 @@ from caches.random_widgets_cache import RandomWidgets
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from modules import meta_lists
-from modules.settings import paginate, page_limit, trakt_user_active
+from modules.settings import paginate, page_limit
 from modules import kodi_utils, settings
 from modules.utils import manual_function_import, make_thread_list
 # logger = kodi_utils.logger
@@ -48,12 +48,12 @@ class RandomLists():
 	tvshow_trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
 
 
-	def trakt_required_dialog(self):
-		if kodi_utils.get_property('fenlight.trakt_required_dialog_shown') != 'true':
-			kodi_utils.set_property('fenlight.trakt_required_dialog_shown', 'true')
+	def tracking_required_dialog(self):
+		if kodi_utils.get_property('fenlight.tracking_required_dialog_shown') != 'true':
+			kodi_utils.set_property('fenlight.tracking_required_dialog_shown', 'true')
 			kodi_utils.ok_dialog(
-				heading='Trakt Required',
-				text='Please connect Trakt in the Accounts section.'
+				heading='Tracking Service Required',
+				text='Please connect a tracking service in the Accounts section for recommendations.'
 			)
 		return kodi_utils.end_directory(self.handle, cacheToDisc=False)
 
@@ -110,12 +110,16 @@ class RandomLists():
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)
 		function_key, list_key = ('movies', 'movie') if self.menu_type == 'movie' else ('shows', 'show')
 
-		if self.action == 'trakt_recommendations' and not trakt_user_active():
-			return self.trakt_required_dialog()
+		if self.action == 'trakt_recommendations':
+			provider = settings.tracking_provider()
+			if provider == 2 or not settings.tracking_user_active(): return self.tracking_required_dialog()
 
 		if not random_list:
-			list_function = self.get_function()
-			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(x)), [function_key,] \
+			if self.action == 'trakt_recommendations' and settings.tracking_provider() == 0:
+				from apis.mdblist_api import mdblist_recommendations
+				list_function = mdblist_recommendations
+			else: list_function = self.get_function()
+			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(x) or []), [function_key,] \
 						if self.action == 'trakt_recommendations' else self.get_sample()))
 			[i.join() for i in threads]
 
@@ -125,7 +129,8 @@ class RandomLists():
 					if isinstance(i, dict) and ('ids' in i or list_key in i)
 				]
 				if not valid_results:
-					return self.trakt_required_dialog()
+					kodi_utils.notification('No recommendations available from %s' % settings.tracking_provider_name(), 3500)
+					return kodi_utils.end_directory(self.handle, cacheToDisc=False)
 				self.random_results = valid_results
 
 			random_list = random.sample(self.random_results, min(len(self.random_results), 50))

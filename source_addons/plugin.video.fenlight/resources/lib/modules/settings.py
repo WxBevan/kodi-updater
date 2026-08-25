@@ -69,6 +69,24 @@ def playback_key():
 def playback_settings():
 	return (int(get_setting('fenlight.playback.watched_percent', '90')), int(get_setting('fenlight.playback.resume_percent', '5')))
 
+def skip_segment_settings():
+	try:
+		if get_setting('fenlight.skip_segments', 'false') != 'true': return None
+		kinds = set()
+		if get_setting('fenlight.skip_intros', 'true') == 'true': kinds.add('intro')
+		if get_setting('fenlight.skip_recaps', 'true') == 'true': kinds.add('recap')
+		if get_setting('fenlight.skip_outros', 'false') == 'true': kinds.add('outro')
+		if not kinds: return None
+		return {'kinds': kinds, 'dismiss': int(get_setting('fenlight.skip_segments_dismiss', '8'))}
+	except: return None
+
+def next_episode_use_outro_timing():
+	return get_setting('fenlight.next_episode_use_outro_timing', 'true') == 'true'
+
+def next_episode_outro_lead():
+	try: return int(get_setting('fenlight.next_episode_outro_lead', '10'))
+	except: return 10
+
 def limit_resolve():
 	return get_setting('fenlight.playback.limit_resolve', 'false') == 'true'
 
@@ -153,12 +171,13 @@ def auto_play(media_type):
 	return get_setting('fenlight.auto_play_%s' % media_type, 'false') == 'true'
 
 def autoplay_next_episode():
-	if auto_play('episode') and get_setting('fenlight.autoplay_next_episode', 'false') == 'true': return True
-	else: return False
+	# Master Next Episode switch. Source handling follows the normal Episode Auto Play setting:
+	# Auto Play ON resolves/plays automatically; Auto Play OFF opens the normal source results list.
+	return get_setting('fenlight.autoplay_next_episode', 'false') == 'true'
 
 def autoscrape_next_episode():
-	if not auto_play('episode') and get_setting('fenlight.autoscrape_next_episode', 'false') == 'true': return True
-	else: return False
+	# Legacy setting retained for compatibility only. The single Next Episode switch now owns both workflows.
+	return False
 
 def auto_rescrape_cache_ignored():
 	return int(get_setting('fenlight.results.auto_rescrape_cache_ignored', '1'))
@@ -176,14 +195,16 @@ def auto_episode_group():
 	return int(get_setting('fenlight.results.auto_episode_group', '0'))
 
 def auto_nextep_settings(play_type):
-	play_type = 'autoplay' if play_type == 'autoplay_nextep' else 'autoscrape'
-	window_percentage = 100 - int(get_setting('fenlight.%s_next_window_percentage' % play_type, '95'))
-	use_chapters = get_setting('fenlight.%s_use_chapters' % play_type, 'true') == 'true'
+	# Next Episode uses one alert configuration in both automatic and manual-source modes.
+	# The normal Episode Auto Play setting decides what happens after Play is selected.
+	autoplay_mode = play_type == 'autoplay_nextep'
+	window_setting = 'autoplay_next_window_percentage' if autoplay_mode else 'autoscrape_next_window_percentage'
+	chapter_setting = 'autoplay_use_chapters' if autoplay_mode else 'autoscrape_use_chapters'
+	window_percentage = 100 - int(get_setting('fenlight.%s' % window_setting, '95'))
+	use_chapters = get_setting('fenlight.%s' % chapter_setting, 'true') == 'true'
 	scraper_time = int(get_setting('fenlight.results.timeout', '60')) + 20
-	if play_type == 'autoplay':
-		alert_method = int(get_setting('fenlight.autoplay_alert_method', '0'))
-		default_action = {'0': 'play', '1': 'cancel', '2': 'pause'}[get_setting('fenlight.autoplay_default_action', '1')]
-	else: alert_method, default_action = '', ''
+	alert_method = int(get_setting('fenlight.autoplay_alert_method', '0'))
+	default_action = {'0': 'play', '1': 'cancel', '2': 'pause'}.get(get_setting('fenlight.autoplay_default_action', '0'), 'play')
 	return {'scraper_time': scraper_time, 'window_percentage': window_percentage, 'alert_method': alert_method, 'default_action': default_action, 'use_chapters': use_chapters}
 
 def filter_status(filter_type):

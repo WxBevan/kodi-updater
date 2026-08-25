@@ -7,17 +7,19 @@ from modules.settings import avoid_episode_spoilers
 
 class NextEpisode(BaseDialog):
 	episode_status_dict = {
-	'season_premiere': ('Season Premiere', 'b30385b5'),
-	'mid_season_premiere': ('Mid-Season Premiere', 'b385b503'),
-	'series_finale': ('Series Finale', 'b38503b5'),
-	'season_finale': ('Season Finale', 'b3b50385'),
-	'mid_season_finale': ('Mid-Season Finale', 'b3b58503'),
-	'':  (None, None)}
+		'season_premiere': ('Season Premiere', 'b30385b5'),
+		'mid_season_premiere': ('Mid-Season Premiere', 'b385b503'),
+		'series_finale': ('Series Finale', 'b38503b5'),
+		'season_finale': ('Season Finale', 'b3b50385'),
+		'mid_season_finale': ('Mid-Season Finale', 'b3b58503'),
+		'': (None, None)}
+
 	def __init__(self, *args, **kwargs):
 		BaseDialog.__init__(self, *args)
 		self.closed = False
-		self.meta = kwargs.get('meta')
-		self.selected = kwargs.get('default_action', 'cancel')
+		self.meta = kwargs.get('meta') or {}
+		self.selected = kwargs.get('default_action', 'play')
+		if self.selected not in ('play', 'cancel', 'pause'): self.selected = 'play'
 		self.set_properties()
 
 	def onInit(self):
@@ -32,52 +34,52 @@ class NextEpisode(BaseDialog):
 
 	def onAction(self, action):
 		if action in self.closing_actions:
-			self.selected = 'close'
+			self.selected = 'cancel'
 			self.closed = True
 			self.close()
 
 	def onClick(self, controlID):
-		self.selected = {10: 'close', 11: 'play', 12: 'cancel'}[controlID]
+		if controlID == 11: self.selected = 'play'
+		elif controlID == 12: self.selected = 'cancel'
+		else: return
 		self.closed = True
 		self.close()
 
 	def set_properties(self):
-		episode_type = self.meta.get('episode_type', '')
-		self.setProperty('mode', 'next_episode')
 		self.setProperty('thumb', self.get_thumb())
-		self.setProperty('clearlogo', self.meta.get('clearlogo', ''))
-		self.setProperty('episode_label', '%s[B] | [/B]%02dx%02d[B] | [/B]%s' % (self.meta['title'], self.meta['season'], self.meta['episode'], self.meta['ep_name']))
-		status_label, status_highlight = self.episode_status_dict[episode_type]
+		try:
+			self.setProperty('episode_number', 'S%02dE%02d' % (int(self.meta['season']), int(self.meta['episode'])))
+		except:
+			self.setProperty('episode_number', '')
+		self.setProperty('episode_name', self.meta.get('ep_name', ''))
+		self.setProperty('show_name', self.meta.get('title', ''))
+		status_label, status_highlight = self.episode_status_dict.get(self.meta.get('episode_type', ''), (None, None))
 		if status_label:
 			self.setProperty('episode_status.label', status_label)
 			self.setProperty('episode_status.highlight', status_highlight)
 
 	def get_thumb(self):
-		if avoid_episode_spoilers(): thumb = self.meta.get('fanart', '') or addon_fanart()
-		else: thumb = self.meta.get('ep_thumb', None) or self.meta.get('fanart', '') or addon_fanart()
-		return thumb
+		if avoid_episode_spoilers(): return self.meta.get('fanart', '') or addon_fanart()
+		return self.meta.get('ep_thumb') or self.meta.get('fanart', '') or addon_fanart()
 
 	def monitor(self):
 		total_time = self.player.getTotalTime()
 		while self.player.isPlaying():
-			remaining_time = round(total_time - self.player.getTime())
 			if self.closed: break
-			elif self.selected == 'pause' and remaining_time <= 10:
+			try:
+				remaining_time = round(total_time - self.player.getTime())
+			except:
+				remaining_time = 0
+			if self.selected == 'pause' and remaining_time <= 10:
 				self.player.pause()
 				self.sleep(500)
 				break
-			self.sleep(1000)
+			self.sleep(500)
 		if self.selected == 'pause':
+			# Preserve the existing Pause & Wait default-action setting even though the
+			# visible dialog itself now has only Play and Cancel buttons.
 			start_time = time.time()
-			end_time = start_time + 900
-			current_time = start_time
-			while current_time <= end_time and self.selected == 'pause':
-				try:
-					current_time = time.time()
-					pause_timer = time.strftime('%M:%S', time.gmtime(max(end_time - current_time, 0)))
-					self.setProperty('pause_timer', pause_timer)
-					self.sleep(1000)
-				except: break
+			while time.time() - start_time < 900 and self.selected == 'pause': self.sleep(1000)
 			if self.selected != 'cancel': self.player.pause()
 		self.close()
 

@@ -2873,84 +2873,74 @@
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
-                          <property name="setting_label">Limit Auto Play Quality</property>
+                          <property name="setting_label">Limit Automatic Playback Quality</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_quality_episode)]</property>
-                          <property name="setting_description">Choose the Quality properties allowed for autoplay results</property>
+                          <property name="setting_description">Choose the Quality properties allowed when Fen Light selects an Episode source automatically. Next Episode follows this setting only when Episode Auto Play is enabled.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_quality_choice&amp;setting_id=autoplay_quality_episode)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
-                          <property name="setting_label">Autoplay Next Episode</property>
+                          <property name="setting_label">Next Episode</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_next_episode)]</property>
-                          <property name="setting_description">Enable this and Fen Light will automatically play the next episode of a TV Show at the end of the episode currently being watched</property>
+                          <property name="setting_description">Prepare the next episode in the background and show the Next Episode alert near the end of playback. If Episode Auto Play is on, Play starts the prepared source automatically. If Episode Auto Play is off, Play opens the normal source-results list for the next episode.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay_next_episode)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <property name="setting_label">    - Next Episode Alert Method</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_alert_method_name)]</property>
-                          <property name="setting_description">Choose the alert method when Next Episode is ready to be played. Choose Window or Notification</property>
+                          <property name="setting_description">Choose the alert method when Next Episode is ready to be played. Choose Window or Notification.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_alert_method)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_alert_method),0)</visible>
                           <property name="setting_label">    - When No Interaction with Window</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_default_action_name)]</property>
-                          <property name="setting_description">Choose the action performed when you fail to interact with the Next Episode alert</property>
+                          <property name="setting_description">Choose the action performed when you fail to interact with the Next Episode alert.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_default_action)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
-                          <property name="setting_label">    - Show Alert After (%) Playback</property>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <property name="setting_label">    - Use Outro Timing for Alert</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.next_episode_use_outro_timing)]</property>
+                          <property name="setting_description">Use community outro/credits timestamps from TheIntroDB, with IntroDB as a fallback, to time the Next Episode alert. If no usable outro timestamp is available, Fen Light uses the existing chapter or percentage fallback.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=next_episode_use_outro_timing)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true) + String.IsEqual(Window(10000).Property(fenlight.next_episode_use_outro_timing),true)</visible>
+                          <property name="setting_label">        - Alert Before Outro (seconds)</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.next_episode_outro_lead)]</property>
+                          <property name="setting_description">How many seconds before the detected outro begins the Next Episode alert should appear. Default is 10 seconds.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=next_episode_outro_lead)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <property name="setting_label">    - Fallback Alert After (%) Playback</property>
                           <property name="setting_type">numeric</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_next_window_percentage)]</property>
-                          <property name="setting_description">Choose when Fen Light will show the Next Episode Alert</property>
+                          <property name="setting_description">Fallback timing used when no usable outro timestamp is available.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=autoplay_next_window_percentage)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
-                          <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <property name="setting_label">    - Fallback: Use Chapter Info When Available</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_use_chapters)]</property>
-                          <property name="setting_description">Enable this and Fen Light will attempt to use video file Chapter information to ascertain when to show the Next Episode alert. If unsuccessful, then the percentage of playback value will be used instead</property>
+                          <property name="setting_description">Use video chapter information as the first fallback for alert timing when no usable outro timestamp is available. If chapter detection also fails, the percentage fallback is used.</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay_use_chapters)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false)</visible>
-                          <property name="setting_label">Autoscrape Next Episode</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoscrape_next_episode)]</property>
-                          <property name="setting_description">Enable this and Fen Light will automatically search for sources for the next episode of a TV Show towards the end of the episode currently being watched</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoscrape_next_episode)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false) + String.IsEqual(Window(10000).Property(fenlight.autoscrape_next_episode),true)</visible>
-                          <property name="setting_label">    - Show Notification After (%) Playback</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoscrape_next_window_percentage)]</property>
-                          <property name="setting_description">Choose when Fen Light will show the Next Episode Alert</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=autoscrape_next_window_percentage)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(80)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false) + String.IsEqual(Window(10000).Property(fenlight.autoscrape_next_episode),true)</visible>
-                          <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoscrape_use_chapters)]</property>
-                          <property name="setting_description">Enable this and Fen Light will attempt to use video file Chapter information to ascertain when to show the Next Episode alert. If unsuccessful, then the percentage of playback value will be used instead</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoscrape_use_chapters)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(80)</visible>
@@ -2959,6 +2949,50 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.auto_resume_episode_name)]</property>
                           <property name="setting_description">Choose when Fen Light will automatically resume playback of an in-progress Episode</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=auto_resume_episode)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <property name="setting_label">Skip Intro / Recap / Outro</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.skip_segments)]</property>
+                          <property name="setting_description">Show an optional Skip button for detected episode segments using community timestamps from TheIntroDB, with IntroDB as a fallback.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=skip_segments)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.skip_segments),true)</visible>
+                          <property name="setting_label">    - Skip Intros</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.skip_intros)]</property>
+                          <property name="setting_description">Show a Skip Intro button when a usable intro timestamp is available.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=skip_intros)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.skip_segments),true)</visible>
+                          <property name="setting_label">    - Skip Recaps</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.skip_recaps)]</property>
+                          <property name="setting_description">Show a Skip Recap button when a usable recap timestamp is available.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=skip_recaps)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.skip_segments),true)</visible>
+                          <property name="setting_label">    - Skip Outros</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.skip_outros)]</property>
+                          <property name="setting_description">Show a Skip Outro button when a usable outro timestamp is available. When Next Episode is enabled, the Next Episode alert takes priority and the Skip Outro button is not shown.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=skip_outros)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(80)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.skip_segments),true)</visible>
+                          <property name="setting_label">    - Auto-dismiss Skip Button After (seconds)</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.skip_segments_dismiss)]</property>
+                          <property name="setting_description">Maximum number of seconds the Skip button remains visible. The button closes earlier if the detected segment ends.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=skip_segments_dismiss)</onclick>
                       </item>
         <!-- Playback Utilities -->
                       <item>

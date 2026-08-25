@@ -801,6 +801,75 @@ def _sync_progress():
     return True
 
 
+
+def mdblist_recommendations(media_type):
+    """Return MDBList recommendation items in Fen Light's Trakt-style ID shape.
+
+    MDBList exposes recommendation sections rather than one flat endpoint. We discover the
+    available sections, request a small number of them, merge/dedupe the items, and return
+    only provider IDs. TMDb remains responsible for all metadata/artwork in FLAM.
+    """
+    wanted = 'movie' if media_type in ('movie', 'movies') else 'show'
+    cache_key = 'mdblist_recommendations_%s' % wanted
+    cached = mdblist_cache.get(cache_key)
+    if isinstance(cached, list) and cached:
+        return cached
+
+    def rows(value, keys=('sections', 'recommendations', 'results', 'items', 'data')):
+        if isinstance(value, list): return value
+        if isinstance(value, dict):
+            for key in keys:
+                if isinstance(value.get(key), list): return value[key]
+        return []
+
+    sections_payload = call_mdblist('lists/recommended')
+    sections = rows(sections_payload)
+    slugs = []
+    for section in sections:
+        if isinstance(section, str): slug = section
+        elif isinstance(section, dict):
+            slug = section.get('slug') or section.get('section') or section.get('key') or section.get('id') or section.get('name')
+        else: slug = None
+        if slug not in (None, ''):
+            slug = str(slug).strip().strip('/')
+            if slug and slug not in slugs: slugs.append(slug)
+
+    # Some API responses may expose recommendation items directly.
+    payloads = [sections_payload]
+    # Keep this bounded: recommendations are a discovery widget and should never fan out into
+    # dozens of network requests on a Fire TV-class device.
+    for slug in slugs[:6]:
+        data = call_mdblist('lists/recommended/%s/items' % slug, params={'limit': 100, 'offset': 0})
+        if data is not None: payloads.append(data)
+
+    result, seen = [], set()
+    for payload in payloads:
+        for item in rows(payload):
+            if not isinstance(item, dict): continue
+            media = item.get(wanted) or item.get('movie') or item.get('show') or item.get('media') or item
+            if not isinstance(media, dict): continue
+            kind = str(media.get('mediatype') or media.get('media_type') or media.get('type') or item.get('mediatype') or item.get('media_type') or item.get('type') or '').lower()
+            if kind in ('tv', 'tvshow', 'series'): kind = 'show'
+            if kind and kind in ('movie', 'show') and kind != wanted: continue
+            ids = _ids(media)
+            if not ids.get('tmdb'):
+                ids.update({k: v for k, v in _ids(item).items() if k not in ids})
+            if not ids.get('tmdb'):
+                plain_id = media.get('id')
+                if plain_id not in (None, '', 0, '0') and (kind == wanted or media.get('mediatype') == wanted):
+                    ids['tmdb'] = plain_id
+            tmdb_id = _resolve_tmdb('movie' if wanted == 'movie' else 'tvshow', ids)
+            if not tmdb_id: continue
+            ids['tmdb'] = tmdb_id
+            key = str(tmdb_id)
+            if key in seen: continue
+            seen.add(key)
+            result.append({'ids': {'tmdb': ids.get('tmdb', ''), 'imdb': ids.get('imdb', ''), 'tvdb': ids.get('tvdb', '')}})
+            if len(result) >= 100: break
+        if len(result) >= 100: break
+    if result: mdblist_cache.set(cache_key, result)
+    return result
+
 def _normalise_catalog_item(item, media_type, date_key):
     key = 'movie' if media_type == 'movie' else 'show'
     media = item.get(key, item)

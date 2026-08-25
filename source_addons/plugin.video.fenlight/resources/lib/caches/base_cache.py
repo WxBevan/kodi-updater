@@ -37,7 +37,8 @@ last_played text, resume_id integer, title text, unique (db_type, media_id, seas
 last_played text, resume_id integer, title text, unique (db_type, media_id, season, episode))',
 'CREATE TABLE IF NOT EXISTS watched_status (db_type text not null, media_id text not null, status text, unique (db_type, media_id))'),
 'maincache_db': (
-'CREATE TABLE IF NOT EXISTS maincache (id text unique, data text, expires integer)',),
+'CREATE TABLE IF NOT EXISTS maincache (id text unique, data text, expires integer)',
+'CREATE TABLE IF NOT EXISTS skip_segments (id text unique, data text, expires integer)'),
 'metacache_db': (
 'CREATE TABLE IF NOT EXISTS metadata (db_type text not null, tmdb_id text not null, imdb_id text, tvdb_id text, meta text, expires integer, unique (db_type, tmdb_id))',
 'CREATE TABLE IF NOT EXISTS season_metadata (tmdb_id text not null unique, meta text, expires integer)',
@@ -115,7 +116,7 @@ def check_databases_integrity():
 	'favorites_db': ('favourites',),
 	'trakt_db': ('trakt_data', 'watched_status', 'progress'),
 	'mdblist_db': ('mdblist_data', 'watched_status', 'progress'),
-	'maincache_db': ('maincache',),
+	'maincache_db': ('maincache', 'skip_segments'),
 	'metacache_db': ('metadata', 'season_metadata', 'function_cache'),
 	'lists_db': ('lists',),
 	'tmdb_lists_db': ('tmdb_lists',),
@@ -203,6 +204,10 @@ def clear_cache(cache_type, silent=False):
 		if not _confirm(): return
 		from apis.imdb_api import clear_imdb_cache
 		success = clear_imdb_cache()
+	elif cache_type == 'intros':
+		if not _confirm(): return
+		from caches.skip_cache import skip_cache
+		success = skip_cache.clear_cache()
 	elif cache_type == 'pm_cloud':
 		if not _confirm(): return
 		from apis.premiumize_api import Premiumize
@@ -251,7 +256,7 @@ def clear_all_cache():
 	progressDialog = kodi_utils.progress_dialog()
 	line = 'Clearing....[CR]%s'
 	caches = (('meta', 'Meta Cache'), ('internal_scrapers', 'Internal Scrapers Cache'), ('external_scrapers', 'External Scrapers Cache'),
-			('trakt', 'Trakt Cache'), ('mdblist', 'MDBList Cache'), ('imdb', 'IMDb Cache'), ('list', 'List Data Cache'), ('tmdb_list', 'TMDb Personal List Cache'),
+			('trakt', 'Trakt Cache'), ('mdblist', 'MDBList Cache'), ('imdb', 'IMDb Cache'), ('intros', 'Intro/Recap/Outro Cache'), ('list', 'List Data Cache'), ('tmdb_list', 'TMDb Personal List Cache'),
 			('main', 'Main Cache'), ('pm_cloud', 'Premiumize Cloud'), ('rd_cloud', 'Real Debrid Cloud'), ('ad_cloud', 'All Debrid Cloud'),
 			('oc_cloud', 'OffCloud Cloud'), ('ed_cloud', 'Easy Debrid Cloud'), ('tb_cloud', 'TorBox Cloud'))
 	for count, cache_type in enumerate(caches, 1):

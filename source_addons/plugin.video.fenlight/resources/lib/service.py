@@ -283,6 +283,20 @@ class OnUpdateChanges:
 		except: pass
 		return kodi_utils.logger('Fen Light', 'OnUpdateChanges Service Finished')
 
+	def magneto_scraper_01(self):
+		from caches.base_cache import clear_cache
+
+		set_setting('external_scraper.module', 'script.module.magneto')
+		set_setting('external_scraper.name', 'Magneto Module')
+		set_setting('provider.external', 'true')
+
+		clear_cache('external_scrapers', silent=True)
+
+		kodi_utils.logger(
+			'Fen Light',
+			'External scraper migrated to Magneto Module'
+		)
+
 	def context_menu_update_03(self):
 		from caches.settings_cache import default_setting_values
 		set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])

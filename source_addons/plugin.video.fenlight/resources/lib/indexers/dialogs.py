@@ -847,12 +847,8 @@ def options_menu_choice(params, meta=None):
 		autoplay_next_status, autoplay_next_toggle = (on_str, 'false') if settings.autoplay_next_episode() else (off_str, 'true')
 		listing_append((base_str1 % ('Auto Play', ' (%s)' % content), base_str2 % autoplay_status, 'toggle_autoplay'))
 		if menu_type == 'episode' or menu_type in single_ep_list:
-			if autoplay_status == on_str:
-				autoplay_next_status, autoplay_next_toggle = (on_str, 'false') if settings.autoplay_next_episode() else (off_str, 'true')
-				listing_append((base_str1 % ('Autoplay Next Episode', ''), base_str2 % autoplay_next_status, 'toggle_autoplay_next'))
-			else:
-				autoscrape_next_status, autoscrape_next_toggle = (on_str, 'false') if settings.autoscrape_next_episode() else (off_str, 'true')
-				listing_append((base_str1 % ('Autoscrape Next Episode', ''), base_str2 % autoscrape_next_status, 'toggle_autoscrape_next'))
+			autoplay_next_status, autoplay_next_toggle = (on_str, 'false') if settings.autoplay_next_episode() else (off_str, 'true')
+			listing_append((base_str1 % ('Next Episode', ''), base_str2 % autoplay_next_status, 'toggle_autoplay_next'))
 		listing_append((base_str1 % ('Quality Limit', ' (%s)' % content), base_str2 % current_quality_status, 'set_quality'))
 		listing_append((base_str1 % ('', 'Enable Scrapers'), base_str2 % current_scrapers_status, 'enable_scrapers'))
 		if menu_type == 'episode' or menu_type in single_ep_list:
@@ -912,8 +908,6 @@ def options_menu_choice(params, meta=None):
 		set_setting('auto_play_%s' % content, autoplay_toggle)
 	elif choice == 'toggle_autoplay_next':
 		set_setting('autoplay_next_episode', autoplay_next_toggle)
-	elif choice == 'toggle_autoscrape_next':
-		set_setting('autoscrape_next_episode', autoscrape_next_toggle)
 	elif choice == 'set_quality':
 		set_quality_choice({'setting_id': 'autoplay_quality_%s' % content if autoplay_status == on_str else 'results_quality_%s' % content, 'icon': poster})
 	elif choice == 'enable_scrapers':

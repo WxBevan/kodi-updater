@@ -220,10 +220,13 @@ class NavigatorCache:
 			{'mode': 'random.build_tvshow_list', 'action': 'tracking_watchlist_lists', 'name': 'Random %s TV Show Watchlist' % provider_name, 'iconImage': 'tv', 'random': 'true'},
 			{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'my_lists', 'name': 'Random Shuffled %s My Lists (All)' % provider_name, 'iconImage': icon, 'random': 'true', 'shuffle': 'true'},
 			{'mode': 'random.build_trakt_lists', 'list_type': 'my_lists', 'name': 'Random %s My Lists (Single)' % provider_name, 'iconImage': icon, 'random': 'true'}]
+		if settings.tracking_provider() != 2 and settings.tracking_user_active():
+			provider_name = settings.tracking_provider_name()
+			result.extend([
+				{'mode': 'random.build_movie_list', 'action': 'trakt_recommendations', 'new_page': 'movies', 'name': 'Random %s Recommended Movies' % provider_name, 'iconImage': 'movies', 'random': 'true'},
+				{'mode': 'random.build_tvshow_list', 'action': 'trakt_recommendations', 'new_page': 'shows', 'name': 'Random %s Recommended TV Shows' % provider_name, 'iconImage': 'tv', 'random': 'true'}])
 		if settings.tracking_provider() == 1:
 			result.extend([
-				{'mode': 'random.build_movie_list', 'action': 'trakt_recommendations', 'new_page': 'movies', 'name': 'Random Trakt Recommended Movies', 'iconImage': 'movies', 'random': 'true'},
-				{'mode': 'random.build_tvshow_list', 'action': 'trakt_recommendations', 'new_page': 'shows', 'name': 'Random Trakt Recommended TV Shows', 'iconImage': 'tv', 'random': 'true'},
 				{'mode': 'trakt.list.get_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Shuffled Trakt Liked Lists (All)', 'iconImage': 'trakt', 'random': 'true', 'shuffle': 'true'},
 				{'mode': 'random.build_trakt_lists', 'list_type': 'liked_lists', 'name': 'Random Trakt Liked Lists (Single)', 'iconImage': 'trakt', 'random': 'true'}])
 		return result
