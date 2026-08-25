@@ -390,7 +390,7 @@ def default_settings():
 #=====================================================================================#
 #==================== External
 {'setting_id': 'provider.external', 'setting_type': 'boolean', 'setting_default': 'true'},
-{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'CocoScrapers Module'},
+{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'Magneto Module'},
 {'setting_id': 'external.cache_check', 'setting_type': 'boolean', 'setting_default': 'false'},
 {'setting_id': 'external.filter_sources', 'setting_type': 'boolean', 'setting_default': 'true'},
 #==================== Real Debrid
@@ -578,7 +578,7 @@ def default_settings():
 {'setting_id': 'lists_cache_duraton_display_name', 'setting_type': 'string', 'setting_default': '1 Day'},
 {'setting_id': 'results.limit_number_quality_name', 'setting_type': 'string', 'setting_default': 'Off'},
 {'setting_id': 'results.limit_number_total_name', 'setting_type': 'string', 'setting_default': 'Off'},
-{'setting_id': 'external_scraper.module', 'setting_type': 'string', 'setting_default': 'script.module.cocoscrapers'},
+{'setting_id': 'external_scraper.module', 'setting_type': 'string', 'setting_default': 'script.module.magneto'},
 {'setting_id': 'trakt.next_daily_clear', 'setting_type': 'string', 'setting_default': '0'},
 {'setting_id': 'trakt.expires', 'setting_type': 'string', 'setting_default': '0'},
 {'setting_id': 'trakt.refresh', 'setting_type': 'string', 'setting_default': '0'},
@@ -628,7 +628,7 @@ def default_settings():
 {'setting_id': 'updatechecks.context_menu_update_01', 'setting_type': 'string', 'setting_default': 'false'},
 {'setting_id': 'updatechecks.context_menu_update_02', 'setting_type': 'string', 'setting_default': 'false'},
 {'setting_id': 'updatechecks.context_menu_update_03', 'setting_type': 'string', 'setting_default': 'false'},
-
+{'setting_id': 'updatechecks.magneto_scraper_01', 'setting_type': 'string', 'setting_default': 'false'},
 # One-time Trakt migration
 {'setting_id': 'updatechecks.trakt_watched_progress_update_01', 'setting_type': 'string', 'setting_default': 'false'},
 
