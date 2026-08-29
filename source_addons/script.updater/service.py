@@ -16,8 +16,8 @@ ADDON_ID = "script.updater"
 BUNDLE_ID = "script.flam.bundle"
 TARGET_SKIN_ID = "skin.bingie"
 
-LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
-ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
+LATEST_URL = "https://kodiplus.github.io/updater/latest.json"
+ADDONS_XML_URL = "https://kodiplus.github.io/updater/addons.xml"
 
 SESSION_PROPERTY = f"{ADDON_ID}.checked_this_session"
 

@@ -11,14 +11,14 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcvfs
-
+import shutil
 
 ADDON_ID = "script.updater"
 BUNDLE_ID = "script.flam.bundle"
 TARGET_SKIN_ID = "skin.bingie"
 
-LATEST_URL = "https://wxbevan.github.io/kodi-updater/latest.json"
-ADDONS_XML_URL = "https://wxbevan.github.io/kodi-updater/addons.xml"
+LATEST_URL = "https://kodiplus.github.io/updater/latest.json"
+ADDONS_XML_URL = "https://kodiplus.github.io/updater/addons.xml"
 
 PRESENCE_ONLY_ADDONS = {
     "pvr.iptvsimple",
@@ -28,6 +28,19 @@ PROFILE_DIR = xbmcvfs.translatePath(
     f"special://profile/addon_data/{ADDON_ID}"
 )
 BUILD_VERSION_FILE = os.path.join(PROFILE_DIR, "build_version.txt")
+
+OLD_REPO_SOURCE = "https://wxbevan.github.io/kodi-updater"
+NEW_REPO_SOURCE = "https://kodiplus.github.io/updater"
+
+SOURCES_XML = xbmcvfs.translatePath(
+    "special://profile/sources.xml"
+)
+
+SOURCE_MIGRATION_MARKER = os.path.join(
+    PROFILE_DIR,
+    "kodiplus_source_migrated.txt",
+)
+
 
 INSTALL_TIMEOUT_SECONDS = 420
 POLL_INTERVAL_SECONDS = 2
@@ -54,6 +67,115 @@ def write_local_build_version(version):
 
     with open(BUILD_VERSION_FILE, "w", encoding="utf-8") as file:
         file.write(str(version))
+
+def migrate_file_manager_source():
+    """
+    Migrate the old WxBevan File Manager source to KodiPlus.
+
+    This is intentionally non-fatal. The installed repository add-on
+    already controls normal Kodi updates, so a File Manager migration
+    failure must never fail an otherwise successful FLAM update.
+    """
+    temp_path = SOURCES_XML + ".kodiplus.tmp"
+
+    try:
+        ensure_profile_dir()
+
+        # Migration has already completed on this Kodi profile.
+        if os.path.exists(SOURCE_MIGRATION_MARKER):
+            return True
+
+        # A fresh Kodi installation may not have a sources.xml yet.
+        if not os.path.exists(SOURCES_XML):
+            with open(
+                SOURCE_MIGRATION_MARKER,
+                "w",
+                encoding="utf-8",
+            ) as marker:
+                marker.write("not-needed")
+
+            log(
+                "File Manager source migration not needed: "
+                "sources.xml does not exist."
+            )
+            return True
+
+        with open(
+            SOURCES_XML,
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as source_file:
+            original = source_file.read()
+
+        old_source_pattern = re.compile(
+            re.escape(OLD_REPO_SOURCE),
+            re.IGNORECASE,
+        )
+
+        # Fresh KodiPlus installs, or systems already migrated.
+        if not old_source_pattern.search(original):
+            with open(
+                SOURCE_MIGRATION_MARKER,
+                "w",
+                encoding="utf-8",
+            ) as marker:
+                marker.write("not-needed")
+
+            log(
+                "Old File Manager repository source was not present."
+            )
+            return True
+
+        updated = old_source_pattern.sub(
+            NEW_REPO_SOURCE,
+            original,
+        )
+
+        # Keep one safety backup of the original sources.xml.
+        backup_path = SOURCES_XML + ".pre-kodiplus.bak"
+
+        if not os.path.exists(backup_path):
+            shutil.copy2(SOURCES_XML, backup_path)
+
+        # Write to a temporary file first so sources.xml is never left
+        # half-written if Kodi/device storage fails during the write.
+        with open(
+            temp_path,
+            "w",
+            encoding="utf-8",
+            newline="",
+        ) as destination_file:
+            destination_file.write(updated)
+
+        os.replace(temp_path, SOURCES_XML)
+
+        with open(
+            SOURCE_MIGRATION_MARKER,
+            "w",
+            encoding="utf-8",
+        ) as marker:
+            marker.write("migrated")
+
+        log(
+            "File Manager repository source migrated from "
+            f"{OLD_REPO_SOURCE} to {NEW_REPO_SOURCE}."
+        )
+        return True
+
+    except Exception as exc:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+
+        log(
+            f"Could not migrate File Manager repository source: {exc}",
+            xbmc.LOGWARNING,
+        )
+        return False
+
 
 
 def cache_busted_url(url):
@@ -495,6 +617,12 @@ def install_or_update():
                     "The updater will try again on the next Kodi startup."
                 )
 
+
+
+            # Everything is installed and verified. Migrate any legacy
+            # WxBevan File Manager source before completing the build.
+            migrate_file_manager_source()
+
             # Do not mark the first installation complete until the skin
             # has also activated successfully.
             write_local_build_version(latest_build)
@@ -506,6 +634,9 @@ def install_or_update():
                 5000,
             )
             return
+
+        # All required add-ons have now been installed and verified.
+        migrate_file_manager_source()
 
         write_local_build_version(latest_build)
 

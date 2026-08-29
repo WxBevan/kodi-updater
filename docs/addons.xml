@@ -1166,13 +1166,13 @@ fix for fanarttv landscape art overwriting TMDb landscape art
     </extension>
 </addon>
 
-<addon id="repository.updater" name="Updater Repository" version="1.0.0" provider-name="WxBevan">
+<addon id="repository.updater" name="Updater Repository" version="1.0.1" provider-name="KodiPlus">
 
     <extension point="xbmc.addon.repository" name="Updater Repository">
         <dir>
-            <info compressed="false">https://wxbevan.github.io/kodi-updater/addons.xml</info>
-            <checksum>https://wxbevan.github.io/kodi-updater/addons.xml.md5</checksum>
-            <datadir zip="true">https://wxbevan.github.io/kodi-updater/</datadir>
+            <info compressed="false">https://kodiplus.github.io/updater/addons.xml</info>
+            <checksum>https://kodiplus.github.io/updater/addons.xml.md5</checksum>
+            <datadir zip="true">https://kodiplus.github.io/updater/</datadir>
         </dir>
     </extension>
 
@@ -1754,7 +1754,7 @@ fix for fanarttv landscape art overwriting TMDb landscape art
 	</extension>
 </addon>
 
-<addon id="script.updater" name="Updater" version="1.0.10" provider-name="updater">
+<addon id="script.updater" name="Updater" version="1.0.11" provider-name="updater">
 
     <requires>
         <import addon="xbmc.gui" version="5.17.0" />
